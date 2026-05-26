@@ -69,6 +69,15 @@ const DEFAULT_MAX_EXPOSURE_BPS: u64 = 8000;
 /// Source: `sim/data/s1_results/s5_gate_b.json::f_star_summary`.
 const DEFAULT_F_BPS: u64 = 500;
 
+/// Default ladder size — mirrors `sim/model/dn_ladder.py:52`.
+const DEFAULT_RECOMMENDED_LADDER_SIZE: u64 = 5;
+
+/// Default ladder band — sim S0 diagnostic, PINNED BEFORE Sortino
+/// computation (anti-cherry-pick). Source:
+/// `sim/model/dn_ladder.py:50-51`.
+const DEFAULT_LADDER_BAND_LO_BPS: u64 = 9595;
+const DEFAULT_LADDER_BAND_HI_BPS: u64 = 9811;
+
 // ---- Strata share token (witness pattern) -------------------------------
 
 /// One-time witness for the Strata vault share `Coin<VAULT>`.
@@ -126,6 +135,22 @@ public struct Vault has key {
     /// consume balance. Together with `plp_value` it forms the
     /// `balance_total` used by `within_max_exposure`.
     dusdc_in_manager: u64,
+    /// Gov-recommended ladder size. Bounded [3, 7] at the gov layer
+    /// (admin write via `gov::set_recommended_ladder_size`). The
+    /// `ladder::open_hedge_ladder` entry still accepts [1, 7] for
+    /// S1 single-strike backwards-compat regression testing; the gov
+    /// recommendation is the OPERATIONAL default, not a hard floor.
+    /// Default 5 — `sim/model/dn_ladder.py:52`.
+    recommended_ladder_size: u64,
+    /// Gov-writable ladder band lower bound (loss-onset deep side).
+    /// Default 9595 (= 1 - 0.0405 = sim PLP p0.1). Admin writes via
+    /// `gov::set_ladder_band`; bounded `0 < lo <= hi < 10000`.
+    /// Source: `sim/model/dn_ladder.py:50`.
+    ladder_band_lo_bps: u64,
+    /// Gov-writable ladder band upper bound (loss-onset shallow side).
+    /// Default 9811 (= 1 - 0.0189 = sim PLP p1).
+    /// Source: `sim/model/dn_ladder.py:51`.
+    ladder_band_hi_bps: u64,
 }
 
 // ---- Events -------------------------------------------------------------
@@ -183,6 +208,9 @@ fun init(otw: VAULT, ctx: &mut TxContext) {
         max_exposure_bps: DEFAULT_MAX_EXPOSURE_BPS,
         predict_manager_id: option::none(),
         dusdc_in_manager: 0,
+        recommended_ladder_size: DEFAULT_RECOMMENDED_LADDER_SIZE,
+        ladder_band_lo_bps: DEFAULT_LADDER_BAND_LO_BPS,
+        ladder_band_hi_bps: DEFAULT_LADDER_BAND_HI_BPS,
     };
     event::emit(VaultInitialised {
         vault_id: object::id(&vault),
@@ -372,6 +400,9 @@ public fun predict_manager_id(self: &Vault): &Option<ID> { &self.predict_manager
 public fun has_predict_manager(self: &Vault): bool {
     option::is_some(&self.predict_manager_id)
 }
+public fun recommended_ladder_size(self: &Vault): u64 { self.recommended_ladder_size }
+public fun ladder_band_lo_bps(self: &Vault): u64 { self.ladder_band_lo_bps }
+public fun ladder_band_hi_bps(self: &Vault): u64 { self.ladder_band_hi_bps }
 
 // ---- Package-private mutators (used by ladder.move M3, r3.move M4,
 // ----                          gov.move M5)
@@ -408,6 +439,15 @@ public(package) fun reduce_dusdc_in_manager(self: &mut Vault, delta: u64) {
     self.dusdc_in_manager = if (self.dusdc_in_manager > delta) {
         self.dusdc_in_manager - delta
     } else { 0 };
+}
+public(package) fun set_recommended_ladder_size(self: &mut Vault, new_size: u64) {
+    self.recommended_ladder_size = new_size;
+}
+public(package) fun set_ladder_band(
+    self: &mut Vault, new_lo: u64, new_hi: u64,
+) {
+    self.ladder_band_lo_bps = new_lo;
+    self.ladder_band_hi_bps = new_hi;
 }
 
 // ---- Internal helpers --------------------------------------------------
