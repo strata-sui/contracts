@@ -1,0 +1,35 @@
+[package]
+name = "strata_vault"
+edition = "2024.beta"
+version = "0.1.0"
+license = "MIT"
+authors = ["strata-sui contributors"]
+
+# Strata vault — optimal-f tail-aware PLP allocator on DeepBook Predict.
+# Simulator phase frozen at strata-sui/sim @ v0.1.0-simulator-closed.
+# Move phase = execution credibility layer mirroring the sim's discovered
+# invariants on-chain (R3 redeem-permissionless path, DN ladder S4.1, f as
+# governance param, depositor-bounded loss + max_exposure 0.80 ceiling).
+
+[dependencies]
+# DeepBookPredict pulls Sui transitively at its own pinned rev; we let
+# the resolver auto-add Sui to avoid a multi-version conflict (see
+# `sui move build` note: "Dependencies on Sui ... are automatically
+# added"). Re-pinning Sui explicitly here triggers the resolver error
+# "Package depends on multiple versions of the package with ID 0x...0002".
+deepbook_predict = { git = "https://github.com/MystenLabs/deepbookv3.git", subdir = "packages/predict", rev = "predict-testnet-4-16" }
+
+[addresses]
+strata_vault = "0x0"
+# NOTE: `deepbook_predict` address is brought in by the dep above and
+# MUST NOT be redeclared here (resolver errors with "Address
+# `deepbook_predict` is defined more than once"). The live testnet
+# package address is
+# 0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138
+# (verified at M0 pre-flight 2026-05-26: objType=package, Immutable).
+# Re-pinning at publish time happens via the dep's own Move.toml.
+
+[dev-dependencies]
+
+[dev-addresses]
+strata_vault = "0xCAFE"
