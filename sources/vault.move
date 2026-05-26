@@ -459,8 +459,50 @@ fun mul_div(a: u64, b: u64, c: u64): u64 {
     q as u64
 }
 
-// ---- Test-only init for M6 tests ---------------------------------------
+// ---- Test-only helpers for M6 invariant tests --------------------------
 #[test_only]
 public fun init_for_testing(ctx: &mut TxContext) {
     init(VAULT {}, ctx)
+}
+
+/// Test-only: mint shares directly into circulation without going
+/// through `supply<Quote>` (which requires staged Predict state).
+/// Used by M6 invariant tests to construct vault states that
+/// exercise the share-price floor + max-exposure bound assertions
+/// at the Strata-side accounting layer.
+#[test_only]
+public fun mint_test_shares(
+    self: &mut Vault, amount: u64, ctx: &mut TxContext,
+): Coin<VAULT> {
+    coin::mint(&mut self.share_treasury, amount, ctx)
+}
+
+/// Test-only: synthetically inject PLP balance (bypassing
+/// `predict::supply` which would otherwise be required to mint
+/// `Balance<PLP>`). M6 invariant tests use this to set up
+/// "post-LP-supply" vault states without staging the full Predict
+/// package. NOTE: PLP has `drop`, so we construct an empty balance
+/// of the correct type and use this helper to bump the implicit
+/// counter the share-price math reads.
+#[test_only]
+public fun inject_test_dusdc_in_manager(
+    self: &mut Vault, amount: u64,
+) {
+    self.dusdc_in_manager = self.dusdc_in_manager + amount;
+}
+
+/// Test-only: directly set total_mtm to any value (including > balance).
+/// Mirrors the S5R3.2 insolvent state where sim's
+/// `PLPVault.share_price` would have gone negative pre-fix.
+#[test_only]
+public fun set_total_mtm_for_testing(self: &mut Vault, mtm: u64) {
+    self.total_mtm = mtm;
+}
+
+/// Test-only: directly set total_max_payout to any value.
+/// Used to construct max-exposure violation states without staging
+/// a full ladder open.
+#[test_only]
+public fun set_total_max_payout_for_testing(self: &mut Vault, payout: u64) {
+    self.total_max_payout = payout;
 }
