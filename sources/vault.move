@@ -112,6 +112,20 @@ public struct Vault has key {
     /// defensive guard against Predict's value rotating up; see
     /// `sim/eval/account.py` post-S5R3.3 fix.
     max_exposure_bps: u64,
+    /// `Some(id)` of the Strata-owned `PredictManager` once
+    /// `ladder::init_predict_manager` has been called by admin.
+    /// `None` at deploy time. Pattern A architecture
+    /// (`docs/move_appendix_protocol.md §8`): one manager total,
+    /// owner = Strata admin, used by ladder.move (M3) for hedge
+    /// `predict::mint` calls and by r3.move (M4) for the
+    /// `redeem_permissionless` bypass.
+    predict_manager_id: Option<ID>,
+    /// Strata-side mirror of the dUSDC parked inside the
+    /// `PredictManager.balance_manager` (for hedge-leg premium funding).
+    /// Bumped by `ladder::fund_manager`; reduced as hedge mints
+    /// consume balance. Together with `plp_value` it forms the
+    /// `balance_total` used by `within_max_exposure`.
+    dusdc_in_manager: u64,
 }
 
 // ---- Events -------------------------------------------------------------
@@ -167,6 +181,8 @@ fun init(otw: VAULT, ctx: &mut TxContext) {
         total_mtm: 0,
         f_bps: DEFAULT_F_BPS,
         max_exposure_bps: DEFAULT_MAX_EXPOSURE_BPS,
+        predict_manager_id: option::none(),
+        dusdc_in_manager: 0,
     };
     event::emit(VaultInitialised {
         vault_id: object::id(&vault),
@@ -191,7 +207,7 @@ public fun share_price_micro(self: &Vault): u64 {
         return SHARE_PRICE_SCALE
     };
     let plp_value = balance::value(&self.plp_held);
-    let nav_raw = (plp_value + self.dusdc_held_value);
+    let nav_raw = (plp_value + self.dusdc_held_value + self.dusdc_in_manager);
     // The floor: subtract MTM only up to the gross value, never below 0.
     // (Sim's `max(0.0, nav / shares_outstanding)` mapped to u64.)
     let nav = if (nav_raw > self.total_mtm) {
@@ -206,7 +222,10 @@ public fun share_price_micro(self: &Vault): u64 {
 /// `sim/model/plp.py::PLPVault::available_for_withdraw` lines 86-94.
 /// Returned as USD-equivalent in dUSDC base units.
 public fun available_for_withdraw(self: &Vault): u64 {
-    let balance_total = balance::value(&self.plp_held) + self.dusdc_held_value;
+    let balance_total =
+        balance::value(&self.plp_held)
+        + self.dusdc_held_value
+        + self.dusdc_in_manager;
     if (balance_total > self.total_max_payout) {
         balance_total - self.total_max_payout
     } else {
@@ -326,7 +345,10 @@ public fun redeem<Quote>(
 /// trader notional). M3 ladder open MUST assert this passes before
 /// emitting the mint.
 public fun within_max_exposure(self: &Vault): bool {
-    let balance_total = balance::value(&self.plp_held) + self.dusdc_held_value;
+    let balance_total =
+        balance::value(&self.plp_held)
+        + self.dusdc_held_value
+        + self.dusdc_in_manager;
     // total_max_payout <= max_exposure_bps/10000 * balance
     // ⇒ total_max_payout * 10000 <= max_exposure_bps * balance
     let lhs = (self.total_max_payout as u128) * 10000u128;
@@ -345,6 +367,11 @@ public fun total_max_payout(self: &Vault): u64 { self.total_max_payout }
 public fun total_mtm(self: &Vault): u64 { self.total_mtm }
 public fun plp_value(self: &Vault): u64 { balance::value(&self.plp_held) }
 public fun dusdc_held_value(self: &Vault): u64 { self.dusdc_held_value }
+public fun dusdc_in_manager(self: &Vault): u64 { self.dusdc_in_manager }
+public fun predict_manager_id(self: &Vault): &Option<ID> { &self.predict_manager_id }
+public fun has_predict_manager(self: &Vault): bool {
+    option::is_some(&self.predict_manager_id)
+}
 
 // ---- Package-private mutators (used by ladder.move M3, r3.move M4,
 // ----                          gov.move M5)
@@ -370,6 +397,17 @@ public(package) fun set_max_exposure_bps(self: &mut Vault, new_cap: u64) {
 }
 public(package) fun assert_admin(self: &Vault, ctx: &TxContext) {
     assert!(tx_context::sender(ctx) == self.admin, ENotAdmin);
+}
+public(package) fun set_predict_manager_id(self: &mut Vault, id: ID) {
+    self.predict_manager_id = option::some(id);
+}
+public(package) fun bump_dusdc_in_manager(self: &mut Vault, delta: u64) {
+    self.dusdc_in_manager = self.dusdc_in_manager + delta;
+}
+public(package) fun reduce_dusdc_in_manager(self: &mut Vault, delta: u64) {
+    self.dusdc_in_manager = if (self.dusdc_in_manager > delta) {
+        self.dusdc_in_manager - delta
+    } else { 0 };
 }
 
 // ---- Internal helpers --------------------------------------------------
