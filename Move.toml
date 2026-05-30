@@ -17,7 +17,14 @@ authors = ["strata-sui contributors"]
 # `sui move build` note: "Dependencies on Sui ... are automatically
 # added"). Re-pinning Sui explicitly here triggers the resolver error
 # "Package depends on multiple versions of the package with ID 0x...0002".
-deepbook_predict = { git = "https://github.com/MystenLabs/deepbookv3.git", subdir = "packages/predict", rev = "predict-testnet-4-16" }
+#
+# `published-at` + `override` tells the resolver "this dep is the
+# already-published testnet package at this address" — required for
+# `sui client publish` to NOT complain "unpublished dependencies:
+# deepbook_predict". The upstream Move.toml at `predict-testnet-4-16`
+# doesn't carry `published-at` in its `[package]` section (built for
+# local-publish flow), so we override here.
+deepbook_predict = { git = "https://github.com/MystenLabs/deepbookv3.git", subdir = "packages/predict", rev = "predict-testnet-4-16", override = true }
 
 [addresses]
 strata_vault = "0x0"
@@ -34,27 +41,14 @@ strata_vault = "0x0"
 [dev-addresses]
 strata_vault = "0xCAFE"
 
-# ★ Testnet publish-time dep overrides (M7 publish-blocker fix 2026-05-26).
-#
-# Without these, `sui client publish` fails with:
-#   "The package has unpublished dependencies. Unpublished dependencies:
-#    deepbook_predict"
-#
-# even though `sui move build` resolves cleanly. Reason: the upstream
-# deepbook_predict + token + deepbook source-tree Move.toml files don't
-# carry their own `published-at` (they're built for local-publish flow,
-# not consumed-as-dependency flow). The `[dep-replacements.<env>]`
-# section tells the publisher: "for the testnet env, treat these deps
-# as already-published at the addresses below — they are exactly the
-# packages I want to link against on-chain."
-#
-# Addresses verified live at M0 pre-flight 2026-05-26 via
-# `sui client object`. Re-pin if testnet rotates (per
-# `docs/move_appendix_protocol.md §1` LOCAL).
-#
-# IMPORTANT: after editing this block, run
-#   rm -rf build/ Move.lock && sui move build
-# before re-publish — the lock caches the old "unpublished" resolution.
-[dep-replacements.testnet]
-deepbook_predict = { published-at = "0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138", original-id = "0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138" }
-token = { published-at = "0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8", original-id = "0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8" }
+# NOTE on M7 publish-blocker fix (2026-05-26): the earlier attempt to
+# use `[dep-replacements.testnet]` with `{ published-at, original-id }`
+# inline tables FAILED on Sui CLI 1.72.2 with
+#   "Dependency must have a `git`, `local`, or `r` field"
+# (the section requires full dep specs, not just address overrides).
+# The working pattern is `override = true` directly on the main
+# `deepbook_predict` dep declaration in `[dependencies]` above. That
+# tells the publisher "this dep is the already-published testnet
+# package at the deepbook_predict's own address (0xf5ea...138 — verified
+# live at M0 pre-flight 2026-05-26)". The `token` transitive dep
+# auto-resolves once `deepbook_predict` is marked overridden.

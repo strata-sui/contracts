@@ -31,7 +31,7 @@ deps = { deepbook = "deepbook", std = "MoveStdlib", sui = "Sui" }
 [pinned.testnet.strata_vault]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "F9C1FB8942C61FFC9F0ED5CAAF48224AC801B4F48318059623B6D17A9C33BEF7"
+manifest_digest = "6E8DCA9F8F66D9C4A625FE26E0C6020FE147E118CC73E22CEE5BA73DD6B4E941"
 deps = { deepbook_predict = "deepbook_predict", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.token]
