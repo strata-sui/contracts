@@ -54,19 +54,23 @@ Every Move assertion that mirrors a sim invariant cites the sim file
 
 ## Public testnet deploy
 
-> *Pending the M7 deploy step. Worker's reproducible deploy script:
-> `scripts/deploy_testnet.ps1`. When the deployer address has been
-> funded with ≥ 2 SUI testnet gas, deploy completes in ~30 s; this
-> section gets the live testnet `package_id` + deploy `tx_digest` +
-> bytecode hash.*
+> *Deployed to Sui testnet 2026-05-30. Published from the canonical
+> Strata testnet address with the `Published.toml`-in-cache mechanism
+> (see "Verifying the build on Suiscan" below) so the canonical
+> `predict` / `deepbook` / `token` packages are linked, never
+> republished.*
 
 | Field | Value |
 |---|---|
-| Package address | `<PENDING M7 publish>` |
-| Deploy tx digest | `<PENDING M7 publish>` |
-| Deployer (testnet) | `0x67606efb71792fdb505e123f020cfaaf19d9c54d3b07bf399b5fa08072f72eac` |
-| Network | testnet |
-| Sui CLI used | `1.72.2-85b460a63fd7-dirty` |
+| Package address | `0xb2986cb60834b8333f1d52edef5627042eff42588cafb2540292157f936b5999` |
+| Deploy tx digest | `DrBXTuFBnwhqctbNmoCSvw5jZ4GRq8pJEh2M8aAmNZuU` |
+| Vault object (shared) | `0x44cc95d2a0a2ed3bff1ff36873a0a5ac859b1ef382eb55d53d77907aaf1053b9` |
+| UpgradeCap | `0xbff356585e35890fba6c09733463158a96530c0a9b0c2bca2ab042f41e95012a` |
+| Deployer (testnet) | `0xe7b270554f5e3cb61f178f0411a71601b9d4c5a3114f26fa40104d4b22696add` |
+| Network | testnet (chain-id `4c78adac`) |
+| Sui CLI used | `1.73.0` |
+
+Explore on Suiscan: <https://suiscan.xyz/testnet/object/0xb2986cb60834b8333f1d52edef5627042eff42588cafb2540292157f936b5999>
 
 `scripts/deploy_testnet.ps1` is idempotent + crash-safe. The script
 performs a pre-flight env / balance check, re-runs `sui move build`
@@ -75,6 +79,49 @@ performs a pre-flight env / balance check, re-runs `sui move build`
 (`data/deploy_receipt.json`) captures `package_id`,
 `deploy_tx_digest`, `vault_object_id`, and the deployer address for
 auditor reproducibility.
+
+## End-to-end testnet replay (M8)
+
+The live user flow was exercised against the deployed package on
+testnet 2026-05-30. Each step is a real on-chain transaction, linking
+the canonical DeepBook Predict `Predict`, `OracleSVI`, and
+`PredictManager` objects:
+
+| Step | Entry | Tx digest | Result |
+|---|---|---|---|
+| 1. Bootstrap manager | `ladder::init_predict_manager` | `2cjdapXap6XGVFJdtPk9yta2Wch1m5xWvUcqZLCtEfPK` | Shared `PredictManager` `0x5841704d6fe4b567d66ed8234ca6aba37de70a5ecd2760132a42a75c570fd802` created + linked into the vault |
+| 2. Supply | `vault::supply<DUSDC>` | `8ibdXQtDvU2PDCRyNxL7pg55V5myjv1dVGYi7r3PQLVw` | 5,000 dUSDC → PLP; received `Coin<VAULT>` share `0x6209c56ff1d35d6898c41ab7ee2533c70742ec56e4a758c27fba80ed0c068336` |
+| 3. Fund manager | `ladder::fund_manager<DUSDC>` | `PtnGVDqYQLYB6mUzco16hHbB7CkzumYjtCjwBnhEkws` | 2,000 dUSDC deposited into the hedge-side `PredictManager` bank |
+| 4. Open hedge ladder | `ladder::open_hedge_ladder<DUSDC>` | — | **Blocked by an on-chain strike-tick constraint — see limitation below** |
+
+### Known limitation — DN-ladder strike-tick alignment
+
+`ladder::compute_strikes` spaces strikes as
+`mul_div(forward, m_bps, 10000)` — the on-chain integer approximation
+of the sim's uniform-log-moneyness band. DeepBook Predict's
+`oracle_config::assert_valid_strike` requires every strike to land on
+the oracle's tick grid (`tick_size = 1e9` on the BTC oracles
+observed), and its `pricing_config::quote_spread_from_fair_price`
+requires the resulting DN fair price to sit inside the ask bounds
+`[1%, 99%]`. These two constraints squeeze the achievable `forward`:
+
+- **True forward** (e.g. `73962948155825`, ~$73,963) → strikes land
+  ~2–4 % OTM (good price-wise) but are **not exact tick multiples** →
+  `assert_valid_strike` aborts (code 2).
+- **Tick-clean forward** (`70000000000000`, the nearest `1e13`
+  multiple) → strikes are valid ticks but ~7–9 % OTM → DN fair price
+  hits the ask bound → `quote_spread_from_fair_price` aborts (code 1).
+
+A single `forward` cannot satisfy tick alignment for all five legs
+*and* keep them in-band, because Move stdlib lacks the per-strike
+floating-point rounding the sim performs off-chain. **Fix (follow-up,
+not in this tag):** round each leg's strike to the nearest oracle
+tick *inside* `compute_strikes` using the oracle's `min_strike` +
+`tick_size` (read from the `OracleSVI`), so strikes are both valid and
+in-band regardless of the raw `forward`. This is a localized change to
+one helper; the supply / fund / R3 legs are unaffected and are proven
+live above. The sim verdict and invariants are untouched by this
+on-chain rounding detail.
 
 ## Build + test reproduction
 
@@ -90,10 +137,86 @@ sui move test
 pwsh -File scripts/deploy_testnet.ps1
 ```
 
-Build determinism: `Move.lock` is committed so the resolver state is
-auditor-checkable. `Move.toml` pins `deepbook_predict` at git revision
+Build determinism: `Move.lock` + `Published.toml` are committed so the
+resolver state and the published address are auditor-checkable.
+`Move.toml` pins `deepbook_predict` at git revision
 `predict-testnet-4-16` (verified live at M0 pre-flight 2026-05-26 —
 all 3 protocol addresses confirmed on-chain via `sui client object`).
+
+## Verifying the build on Suiscan
+
+The published package reproduces deterministically from this repo's
+committed source. You can confirm it two ways.
+
+### 1. Local CLI verification (`sui client verify-source`)
+
+This compiles the local source and byte-compares it against the
+on-chain package at the address in `Published.toml`:
+
+```bash
+sui client verify-source        # add --verify-deps to also check deps
+# => "Source verification succeeded!"
+```
+
+A green result proves the committed `sources/` + `Move.toml` +
+`Move.lock` produce *exactly* the bytecode living at
+`0xb2986cb6…b5999` on testnet. This repo passes as of the deploy
+commit.
+
+### 2. Suiscan source verification (the public "Verified" badge)
+
+Suiscan's verifier (WELLDONE Studio / Blockberry) does the same
+bytecode comparison, then publishes a **Source Code** tab + a
+"Verified" label on the package page. Steps:
+
+1. Zip the package source. It MUST contain `Move.toml` (with **git**
+   dependencies, not local paths), `Move.lock`, `Published.toml`, and
+   the `sources/` directory:
+
+   ```bash
+   zip -r strata_vault_src.zip Move.toml Move.lock Published.toml sources/
+   # no `zip` installed? python fallback:
+   python3 -c "import zipfile,os; z=zipfile.ZipFile('strata_vault_src.zip','w',zipfile.ZIP_DEFLATED); [z.write(f) for f in ['Move.toml','Move.lock','Published.toml']]; [z.write(os.path.join(r,fn)) for r,_,fs in os.walk('sources') for fn in fs]; z.close()"
+   ```
+
+2. Open the package on Suiscan testnet:
+   <https://suiscan.xyz/testnet/object/0xb2986cb60834b8333f1d52edef5627042eff42588cafb2540292157f936b5999>
+
+3. Click **Verify** (only shown for unverified packages).
+
+4. Paste the package ID `0xb2986cb6…b5999` and upload
+   `strata_vault_src.zip` (browse or drag-drop).
+
+5. The verifier compiles the zipped source against the git deps and
+   compares to on-chain bytecode. On success a **Source Code** tab
+   appears and the package is badged **Verified**.
+
+> Requirements that make verification pass: dependencies in `Move.toml`
+> are git-pinned (Strata pins `deepbook_predict` / `deepbook` / `token`
+> by `rev`), `Published.toml` carries the canonical `published-at`, and
+> the zip is built from the same commit that was deployed. Third-party
+> "no-code" deployers often omit `Move.lock` / source files and fail
+> here — Strata ships the full source so it does not.
+
+### Verifying at the moment you run `sui client publish`
+
+To verify a *fresh* deploy in one flow:
+
+```bash
+# 1. Publish. Sui writes Published.toml with the new published-at.
+sui client publish --gas-budget 500000000 --json > publish_output.json
+
+# 2. Immediately byte-verify the local source against what you just
+#    published (no address to copy — it reads Published.toml):
+sui client verify-source
+
+# 3. Commit Published.toml (+ Move.lock) so the verified address is
+#    pinned in source control, then do the Suiscan zip-upload above.
+git add Published.toml Move.lock && git commit -m "chore: pin published address"
+```
+
+`verify-source` right after `publish` is the fast self-check; the
+Suiscan zip-upload is the public-facing badge. Do both.
 
 ## Honest disclosures
 

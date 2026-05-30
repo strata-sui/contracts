@@ -15,3 +15,8 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Publish / verification build artifacts (regenerable)
+publish_output.json
+publish_clean.json
+*.zip
