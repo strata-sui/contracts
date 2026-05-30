@@ -58,6 +58,16 @@ if ($null -eq $totalGas -or $totalGas -lt $gasMinMist) {
 
 # --- 1. Build (sanity) --------------------------------------------------
 
+# Force clean lock + build dir BEFORE re-resolve. Without this, an
+# earlier `sui move build` may have cached a stale "unpublished
+# deepbook_predict" state in Move.lock; the `[dep-replacements.testnet]`
+# block in Move.toml only takes effect after a clean re-resolve.
+# See Move.toml comment block above [dep-replacements.testnet] for the
+# M7 publish-blocker root cause.
+Write-Host '=== M7 clean lock + build/ for fresh resolver state ==='
+if (Test-Path 'build') { Remove-Item -Recurse -Force build | Out-Null }
+if (Test-Path 'Move.lock') { Remove-Item -Force Move.lock | Out-Null }
+
 Write-Host '=== M7 build + test gate ==='
 sui move build
 if ($LASTEXITCODE -ne 0) { Write-Error '[FAIL] sui move build failed.'; exit 1 }
