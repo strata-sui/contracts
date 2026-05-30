@@ -3,7 +3,10 @@ name = "strata_vault"
 edition = "2024.beta"
 version = "0.1.0"
 
+[dependencies]
+deepbook_predict = { git = "https://github.com/MystenLabs/deepbookv3.git", subdir = "packages/predict", rev = "predict-testnet-4-16", override = true }
+
 [dep-replacements.testnet]
-deepbook_predict = { published-at = "0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138", original-id = "0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138" }
-deepbook = { published-at = "0x74cd5657843c627f3d80f713b71e9f895bbbeb470956d8a8e1185badf6cc77c8", original-id = "0xfb28c4cbc6865bd1c897d26aecbe1f8792d1509a20ffec692c800660cbec6982" }
-token = { published-at = "0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8", original-id = "0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8" }
+deepbook_predict = {  git = "https://github.com/MystenLabs/deepbookv3.git", subdir = "packages/predict",published-at = "0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138", original-id = "0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138" }
+deepbook = {  git = "https://github.com/MystenLabs/deepbookv3.git", subdir = "packages/deepbook", published-at = "0x74cd5657843c627f3d80f713b71e9f895bbbeb470956d8a8e1185badf6cc77c8", original-id = "0xfb28c4cbc6865bd1c897d26aecbe1f8792d1509a20ffec692c800660cbec6982" }
+token = {  git = "https://github.com/MystenLabs/deepbookv3.git", subdir = "packages/token", published-at = "0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8", original-id = "0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8" }
