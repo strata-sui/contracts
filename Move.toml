@@ -5,50 +5,13 @@ version = "0.1.0"
 license = "MIT"
 authors = ["strata-sui contributors"]
 
-# Strata vault — optimal-f tail-aware PLP allocator on DeepBook Predict.
-# Simulator phase frozen at strata-sui/sim @ v0.1.0-simulator-closed.
-# Move phase = execution credibility layer mirroring the sim's discovered
-# invariants on-chain (R3 redeem-permissionless path, DN ladder S4.1, f as
-# governance param, depositor-bounded loss + max_exposure 0.80 ceiling).
-
 [dependencies]
-# DeepBookPredict pulls Sui transitively at its own pinned rev; we let
-# the resolver auto-add Sui to avoid a multi-version conflict (see
-# `sui move build` note: "Dependencies on Sui ... are automatically
-# added"). Re-pinning Sui explicitly here triggers the resolver error
-# "Package depends on multiple versions of the package with ID 0x...0002".
-#
-# `published-at` + `override` tells the resolver "this dep is the
-# already-published testnet package at this address" — required for
-# `sui client publish` to NOT complain "unpublished dependencies:
-# deepbook_predict". The upstream Move.toml at `predict-testnet-4-16`
-# doesn't carry `published-at` in its `[package]` section (built for
-# local-publish flow), so we override here.
 deepbook_predict = { git = "https://github.com/MystenLabs/deepbookv3.git", subdir = "packages/predict", rev = "predict-testnet-4-16", override = true }
 
 [addresses]
 strata_vault = "0x0"
-# NOTE: `deepbook_predict` address is brought in by the dep above and
-# MUST NOT be redeclared here (resolver errors with "Address
-# `deepbook_predict` is defined more than once"). The live testnet
-# package address is
-# 0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138
-# (verified at M0 pre-flight 2026-05-26: objType=package, Immutable).
-# Re-pinning at publish time happens via the dep's own Move.toml.
 
 [dev-dependencies]
 
 [dev-addresses]
 strata_vault = "0xCAFE"
-
-# NOTE on M7 publish-blocker fix (2026-05-26): the earlier attempt to
-# use `[dep-replacements.testnet]` with `{ published-at, original-id }`
-# inline tables FAILED on Sui CLI 1.72.2 with
-#   "Dependency must have a `git`, `local`, or `r` field"
-# (the section requires full dep specs, not just address overrides).
-# The working pattern is `override = true` directly on the main
-# `deepbook_predict` dep declaration in `[dependencies]` above. That
-# tells the publisher "this dep is the already-published testnet
-# package at the deepbook_predict's own address (0xf5ea...138 — verified
-# live at M0 pre-flight 2026-05-26)". The `token` transitive dep
-# auto-resolves once `deepbook_predict` is marked overridden.
