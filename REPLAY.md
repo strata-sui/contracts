@@ -7,14 +7,14 @@
 > **directional consistency** of the four S5R3 invariants and the
 > two surviving value pillars.*
 
-**Status.** Pending M7 deploy + dUSDC faucet receipt. This file is
-the template the replay run fills in.
-
-**When this lands.** Worker fills the table below once
-`scripts/deploy_testnet.ps1` completes (M7) and Albary's dUSDC Tally
-form receipt clears (M7 prerequisite for M8 supply/redeem). The
-testnet replay is a single PowerShell session — see
-`docs/move_m8_notes.md` (LOCAL) for the exact procedure.
+**Status.** M7 deploy DONE (package
+`0xb2986cb60834b8333f1d52edef5627042eff42588cafb2540292157f936b5999`,
+testnet). dUSDC airdrop received. M8 replay executed 2026-05-30:
+steps 1–3 (manager bootstrap, supply, fund) landed as real on-chain
+transactions; the ladder-open leg (step 4) is blocked by an on-chain
+strike-tick constraint, documented in `README.md` ("Known limitation
+— DN-ladder strike-tick alignment"). Tables below record the live
+result honestly — no band-aid, the gap is named at its source layer.
 
 ## Replay scenario (mirrors the sim S5R3 verification)
 
@@ -38,13 +38,19 @@ testnet replay is a single PowerShell session — see
 
 | Metric | Sim expected (matching path) | On-chain (M8 replay) | Δ within tolerance? |
 |---|---:|---:|:--:|
-| `total_max_payout` post-mint | `<PENDING>` | `<PENDING>` | `<PENDING>` |
-| `share_price_micro` pre-settlement | `<PENDING>` | `<PENDING>` | `<PENDING>` |
-| ladder ITM legs at settle | `<PENDING>` | `<PENDING>` | `<PENDING>` |
-| R3 `liquid_cash_delta` | `<PENDING>` | `<PENDING>` | `<PENDING>` |
-| `share_price_micro` post-R3 | `<PENDING>` | `<PENDING>` | `<PENDING>` |
-| `within_max_exposure` reads true throughout | `true` | `<PENDING>` | `<PENDING>` |
-| `share_price_micro ≥ 0` invariant throughout | `true` | `<PENDING>` | `<PENDING>` |
+| `share_price_micro` post-supply | `1_000_000` (1.0, first deposit) | `1_000_000` | ✅ exact |
+| `total_max_payout` post-mint | `25_000` | blocked (ladder leg) | — |
+| ladder ITM legs at settle | `≥1` | blocked (ladder leg) | — |
+| R3 `liquid_cash_delta` | `> 0` | blocked (depends on ladder) | — |
+| `share_price_micro` post-R3 | `≥ 1_000_000` | blocked (depends on ladder) | — |
+| `within_max_exposure` reads true throughout | `true` | `true` (post-fund, pre-ladder) | ✅ |
+| `share_price_micro ≥ 0` invariant throughout | `true` | `true` (steps 1–3) | ✅ |
+
+The supply leg confirms the S5R3.2 share-price floor invariant
+on-chain (first deposit mints 1:1 at `1_000_000` micro). The
+ladder-dependent rows are blocked at the strike-tick constraint
+named in `README.md`; they are left explicit rather than synthesised
+(the M8 discipline forbids filling a row the chain did not produce).
 
 Tolerance band: `±1%` on cash deltas (per-leg integer rounding +
 sub-bps SVI updates between sim sample time and on-chain settle).
@@ -55,12 +61,12 @@ per M8 brief acceptance — NOT a band-aid acceptance window widening.
 
 | Step | Tx Digest |
 |---|---|
-| `vault::supply<DUSDC>` of 100 dUSDC | `<PENDING>` |
-| `ladder::init_predict_manager` | `<PENDING>` (one-time, pre-supply) |
-| `ladder::fund_manager<DUSDC>` of ~10 dUSDC | `<PENDING>` |
-| `ladder::open_hedge_ladder<DUSDC>` (5-leg) | `<PENDING>` |
-| `r3::redeem_permissionless<DUSDC>` × 5 legs | `<PENDING>` |
-| `vault::redeem<DUSDC>` of 100 Strata shares | `<PENDING>` |
+| `ladder::init_predict_manager` (one-time, pre-supply) | `2cjdapXap6XGVFJdtPk9yta2Wch1m5xWvUcqZLCtEfPK` |
+| `vault::supply<DUSDC>` of 5,000 dUSDC | `8ibdXQtDvU2PDCRyNxL7pg55V5myjv1dVGYi7r3PQLVw` |
+| `ladder::fund_manager<DUSDC>` of 2,000 dUSDC | `PtnGVDqYQLYB6mUzco16hHbB7CkzumYjtCjwBnhEkws` |
+| `ladder::open_hedge_ladder<DUSDC>` (5-leg) | blocked — strike-tick constraint (README) |
+| `r3::redeem_permissionless<DUSDC>` × 5 legs | blocked — depends on ladder open |
+| `vault::redeem<DUSDC>` of Strata shares | not exercised (no ladder to unwind) |
 
 ## Honest framing
 
