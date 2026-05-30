@@ -5,6 +5,3 @@ version = "0.1.0"
 
 [dependencies]
 deepbook_predict = { git = "https://github.com/MystenLabs/deepbookv3.git", subdir = "packages/predict", rev = "main"}
-
-[addresses]
-strata_vault = "0x0"
