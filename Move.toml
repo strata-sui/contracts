@@ -16,7 +16,21 @@ strata_vault = "0x0"
 [dev-addresses]
 strata_vault = "0xCAFE"
 
+# Minimal form required by the new package-management resolver: a dep-replacement
+# is keyed by the dependency NAME and carries ONLY published-at + original-id.
+# Re-stating git/subdir/rev or adding `override` here makes the resolver treat the
+# entry as a second, mismatched dependency declaration that never binds to the
+# [dependencies] entry above -> the published-at is silently dropped ->
+# "unpublished dependencies: deepbook_predict" at publish time. Format verified
+# byte-for-byte against two live testnet consumers: OpenZeppelin sui-amm
+# (packages/dapp/contracts/prop-amm) + evefrontier/TRION (contracts/trion_core).
 [dep-replacements.testnet]
-deepbook_predict = { git = "https://github.com/MystenLabs/deepbookv3.git", subdir = "packages/predict", rev = "predict-testnet-4-16", published-at = "0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138", original-id = "0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138", override = true }
-deepbook = { git = "https://github.com/MystenLabs/deepbookv3.git", subdir = "packages/deepbook", rev = "predict-testnet-4-16", published-at = "0x74cd5657843c627f3d80f713b71e9f895bbbeb470956d8a8e1185badf6cc77c8", original-id = "0xfb28c4cbc6865bd1c897d26aecbe1f8792d1509a20ffec692c800660cbec6982", override = true }
-token = { git = "https://github.com/MystenLabs/deepbookv3.git", subdir = "packages/token", rev = "a46ad7ef887e3eaa47fe2354c537bcfbad414eb2", published-at = "0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8", original-id = "0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8", override = true }
+deepbook_predict = { published-at = "0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138", original-id = "0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138" }
+deepbook = { published-at = "0x74cd5657843c627f3d80f713b71e9f895bbbeb470956d8a8e1185badf6cc77c8", original-id = "0xfb28c4cbc6865bd1c897d26aecbe1f8792d1509a20ffec692c800660cbec6982" }
+token = { published-at = "0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8", original-id = "0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8" }
+
+[environments]
+# Binds the "testnet" environment name used by [dep-replacements.testnet] to the
+# Sui testnet chain identifier. Without this binding the override section is
+# orphaned. 4c78adac cross-checked against evefrontier/TRION + sui client.
+testnet = "4c78adac"
