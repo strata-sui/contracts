@@ -1,0 +1,12 @@
+# Normalize line endings so checked-out files run on their target shell
+# regardless of the cloner's core.autocrlf setting.
+
+# Shell scripts MUST be LF — they run in WSL/Linux bash. A CRLF shebang
+# yields `/usr/bin/env bash^M: bad interpreter: No such file or directory`.
+*.sh text eol=lf
+
+# PowerShell scripts stay CRLF for native Windows execution.
+*.ps1 text eol=crlf
+
+# Move sources are LF (toolchain + CI are Unix-convention).
+*.move text eol=lf
