@@ -126,10 +126,11 @@ PY
     # Best-effort dUSDC coin listing (convenience; the operator already holds
     # 0xb8438e9b...edb8 from the Tally airdrop). Never fail the run on this.
     echo "--- dUSDC coin objects owned by the active address ---"
-    sui client objects --json 2>/dev/null | python3 <<'PY' || true
-import sys, json
+    DUSDC_OBJS_JSON="$(sui client objects --json 2>/dev/null || true)"
+    DUSDC_OBJS_JSON="$DUSDC_OBJS_JSON" python3 <<'PY' || true
+import os, json
 try:
-    objs = json.load(sys.stdin)
+    objs = json.loads(os.environ.get("DUSDC_OBJS_JSON") or "[]")
 except Exception:
     objs = []
 found = False
@@ -254,10 +255,10 @@ print(f.get("status", ""))
         exit 1
     fi
 
-    printf '%s' "$VAULT_JSON" | LOG_PATH="$LOG_PATH" ORACLE_STATUS="$ORACLE_STATUS" python3 <<'PY'
-import os, sys, json, datetime
+    VAULT_JSON="$VAULT_JSON" LOG_PATH="$LOG_PATH" ORACLE_STATUS="$ORACLE_STATUS" python3 <<'PY'
+import os, json, datetime
 
-vault = json.load(sys.stdin)
+vault = json.loads(os.environ["VAULT_JSON"])
 fields = (vault.get("content") or {}).get("fields") or {}
 
 def num(key):
