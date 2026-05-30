@@ -1,0 +1,11 @@
+{
+  "package_id": "0xb2986cb60834b8333f1d52edef5627042eff42588cafb2540292157f936b5999",
+  "deploy_tx_digest": "DrBXTuFBnwhqctbNmoCSvw5jZ4GRq8pJEh2M8aAmNZuU",
+  "vault_object_id": "0x44cc95d2a0a2ed3bff1ff36873a0a5ac859b1ef382eb55d53d77907aaf1053b9",
+  "upgrade_cap_id": "0xbff356585e35890fba6c09733463158a96530c0a9b0c2bca2ab042f41e95012a",
+  "share_coin_metadata_id": "0x3cfd0284cf88c0b3a47f1f90b831103d9e37c7f4339b37702f98451c3e67c574",
+  "deployer_address": "0xe7b270554f5e3cb61f178f0411a71601b9d4c5a3114f26fa40104d4b22696add",
+  "deploy_timestamp": "2026-05-30T14:21:56.266570Z",
+  "env": "testnet",
+  "notes": "M7 manual publish via WSL sui 1.73.0 + Published.toml cache mechanism. Links canonical predict/deepbook/token."
+}
