@@ -20,7 +20,12 @@ set -euo pipefail
 
 UPGRADE_CAP='0xbff356585e35890fba6c09733463158a96530c0a9b0c2bca2ab042f41e95012a'
 CANONICAL_DEPLOYER='0xe7b270554f5e3cb61f178f0411a71601b9d4c5a3114f26fa40104d4b22696add'
-GAS_BUDGET='200000000'
+# Budget is a CEILING (actual upgrade cost ~0.05 SUI; the v2 upgrade ran fine
+# under 0.8). 0.5 SUI is comfortable headroom for the package's storage.
+GAS_BUDGET='500000000'
+# Min balance: must cover the budget + a margin. The canonical deployer runs
+# ~0.9 SUI; 0.6 SUI is enough for one upgrade. (Earlier 2 SUI was too strict.)
+MIN_BALANCE_MIST='600000000'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONTRACTS_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -51,8 +56,8 @@ for c in (g if isinstance(g, list) else []):
 print(tot)
 ' || echo 0)"
 echo "gas balance     : ${BAL_MIST} mist"
-if [[ "${BAL_MIST:-0}" -lt 2000000000 ]]; then
-    echo "[FAIL] need >= 2 SUI for the upgrade. Top up via faucet." >&2
+if [[ "${BAL_MIST:-0}" -lt "$MIN_BALANCE_MIST" ]]; then
+    echo "[FAIL] need >= ${MIN_BALANCE_MIST} mist (~0.6 SUI) for the upgrade. Top up via faucet." >&2
     exit 1
 fi
 
