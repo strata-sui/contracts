@@ -1,4 +1,4 @@
-# M8 — Strata sim-vs-onchain end-to-end replay (Windows PowerShell)
+# M8 - Strata sim-vs-onchain end-to-end replay (Windows PowerShell)
 #
 # Runs the sim-mirrored R3 verification scenario against the live
 # testnet package, captures the metrics that REPLAY.md compares
@@ -34,7 +34,7 @@ $LogPath = Join-Path $DataDir 'replay_log.json'
 # --- 0. Pre-flight ------------------------------------------------------
 
 if (-not (Test-Path $ReceiptPath)) {
-    Write-Error "[FAIL] $ReceiptPath missing — run scripts/deploy_testnet.ps1 first (M7)."
+    Write-Error "[FAIL] $ReceiptPath missing - run scripts/deploy_testnet.ps1 first (M7)."
     exit 1
 }
 $receipt = Get-Content $ReceiptPath -Raw | ConvertFrom-Json
@@ -51,7 +51,7 @@ Write-Host "phase           : $Phase"
 # --- 1. Phase: open ----------------------------------------------------
 
 if ($Phase -eq 'open') {
-    Write-Host '=== M8.open — supply / init manager / fund manager / open hedge ladder ==='
+    Write-Host '=== M8.open - supply / init manager / fund manager / open hedge ladder ==='
 
     # Pick an active BTC oracle (predict-server REST). The brief
     # mandates an oracle whose expiry is within ~5 minutes so the
@@ -68,23 +68,53 @@ if ($Phase -eq 'open') {
     if (-not $candidate) { Write-Error '[FAIL] no active oracle available.'; exit 1 }
     $oracleId = $candidate.id
     $expiry = $candidate.expiry
-    $forward = $candidate.forward
     Write-Host "oracle_id       : $oracleId"
     Write-Host "expiry          : $expiry  (epoch ms)"
-    Write-Host "forward         : $forward"
+
+    # NOTE (#41): the REST oracles endpoint does NOT return forward
+    # (candidate.forward was always null, a latent bug). Read it from the
+    # on-chain oracle object in native 1e9-per-USD units (what the snapper needs).
+    $oracleForObj = sui client object $oracleId --json 2>&1 | ConvertFrom-Json
+    $forward = $null
+    foreach ($k in @('forward_price', 'forward', 'forward_px')) {
+        $v = $oracleForObj.content.fields.$k
+        if ($v -is [psobject] -and $v.fields) { $v = $v.fields.value }
+        if ($v) { $forward = ($v -replace '[^0-9]', ''); break }
+    }
+    Write-Host "forward (chain) : $forward"
+
+    if (-not $forward) {
+        Write-Host '[WARN] could not read forward from the oracle object. Read it via the'
+        Write-Host '       predict-server svi-latest endpoint, then run the snapper manually.'
+        $forward = '<FORWARD_1E9>'
+        $strikesVector = '<RUN compute_aligned_strikes.py --forward FORWARD>'
+    }
+    else {
+        # Snap band strikes to the live grid tick (1e9); the snapper RAISES below
+        # the floor. Args passed as an array so PowerShell does not parse the
+        # double-dash flags as the decrement operator.
+        $snapScript = Join-Path $PSScriptRoot 'compute_aligned_strikes.py'
+        $snapArgs = @('--forward', "$forward", '--n', '5', '--m-lo-bps', '9595', '--m-hi-bps', '9811')
+        $strikesVector = (& python $snapScript @snapArgs | Select-Object -First 1)
+        Write-Host "strikes (snapped): $strikesVector"
+    }
 
     # Pick a dUSDC coin object owned by the active address. The
     # caller MUST have at least 100 dUSDC from the Tally airdrop;
     # the active address must match the deployer.
     $dusdcType = '0xe95040085976bfd54a1a07225cd46c8a2b4e8e2b6732f140a0fc49850ba73e1a::dusdc::DUSDC'
     Write-Host '--- dUSDC coin objects ---'
-    sui client coins --json 2>&1 | python -c "
+    # Literal here-string so PowerShell does not try to parse the Python. The
+    # earlier inline double-quoted form broke the PS parser (backslash is not
+    # the PowerShell escape char).
+    $coinScript = @'
 import sys, json
 d = json.load(sys.stdin)
 for c in d:
-    if 'dusdc' in str(c.get('coinType','')).lower():
-        print(f\"  id={c.get('coinObjectId')}  balance={c.get('mistBalance')}\")
-" 2>&1 | Tee-Object -Variable dusdcList
+    if "dusdc" in str(c.get("coinType","")).lower():
+        print("  id=" + str(c.get("coinObjectId")) + "  balance=" + str(c.get("mistBalance")))
+'@
+    sui client coins --json 2>&1 | python -c $coinScript 2>&1 | Tee-Object -Variable dusdcList
     Write-Host ''
     Write-Host '>>> Re-run this script with the chosen dUSDC coin id pasted into'
     Write-Host '    a follow-up PTB. Below is the PTB skeleton (cli-driven) for'
@@ -118,8 +148,12 @@ sui client ptb `
         @<ORACLE_OBJ_ID:$oracleId> `
         $expiry `
         $forward `
-        5 9595 9811 5000 `
+        9595 9811 `
+        '$strikesVector' `
+        5000 `
         @<CLOCK:0x6>
+# open_hedge_ladder arg order (#41): expiry forward m_lo_bps m_hi_bps strikes per_leg_qty clock.
+# If `sui client ptb` rejects the inline vector[...], use --make-move-vec '<u64>' '[s0,...]'.
 "@
     $ptbPath = Join-Path $DataDir 'replay_open_ptb.txt'
     New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
@@ -135,6 +169,7 @@ sui client ptb `
         oracle_id            = $oracleId
         oracle_expiry_ms     = $expiry
         oracle_forward       = $forward
+        ladder_strikes_vector = $strikesVector
         ptb_template_path    = $ptbPath
         operator_next_steps  = @(
             '1. Paste the PTB template + fill in <...> placeholders',
@@ -159,10 +194,10 @@ sui client ptb `
 # --- 2. Phase: finalise ------------------------------------------------
 
 if ($Phase -eq 'finalise') {
-    Write-Host '=== M8.finalise — verify oracle settled / redeem_permissionless / read post-state ==='
+    Write-Host '=== M8.finalise - verify oracle settled / redeem_permissionless / read post-state ==='
 
     if (-not (Test-Path $LogPath)) {
-        Write-Error "[FAIL] $LogPath missing — run -Phase open first."
+        Write-Error "[FAIL] $LogPath missing - run -Phase open first."
         exit 1
     }
     $log = Get-Content $LogPath -Raw | ConvertFrom-Json
@@ -194,20 +229,37 @@ if ($Phase -eq 'finalise') {
 
     $packageId = $log.package_id
     $dusdcType = '0xe95040085976bfd54a1a07225cd46c8a2b4e8e2b6732f140a0fc49850ba73e1a::dusdc::DUSDC'
-    $redeemTemplate = @"
-sui client ptb `
-    --move-call $packageId::r3::redeem_permissionless '<$dusdcType>' `
-        @$($log.vault_object_id) `
-        @<PREDICT_SHARED_OBJ:0xc8736...28a> `
-        @<PREDICT_MANAGER_OBJ_ID> `
-        @<ORACLE_OBJ_ID:$oracleId> `
-        @<MARKET_KEY_DOWN_STRIKE_K>     # one per ladder leg
-        5000                              # per-leg quantity
-        @<CLOCK:0x6>
-"@
+    $predictPkgId = '0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138'
+    $predictId = '0xc8736204d12f0a7277c86388a68bf8a194b0a14c5538ad13f22cbd8e2a38028a'
+    $expiry = $log.oracle_expiry_ms
+
+    # Reuse the SAME grid-snapped strikes from the open phase (#41). Each leg
+    # builds its MarketKey in-PTB via market_key::down then redeems it.
+    # `bt` is a literal backtick (sui PTB line-continuation in the output .txt).
+    # We build the redeem template by string-joining so no PowerShell escaping
+    # of the output backticks is needed.
+    $bt = [char]96
+    $vaultObjId = $log.vault_object_id
+    $strikeMatches = [regex]::Matches([string]$log.ladder_strikes_vector, '\d+')
+    $lines = @(
+        '# M8.finalise PTB - redeem each ladder leg via r3::redeem_permissionless,',
+        '# reusing the SAME grid-snapped strikes from the open phase (#41).',
+        '# Fill <PREDICT_MANAGER_OBJ_ID>; run with --gas-budget 100000000.',
+        "sui client ptb $bt"
+    )
+    $strikeVals = if ($strikeMatches.Count -eq 0) { @('<STRIKE_K>') } else { $strikeMatches | ForEach-Object { $_.Value } }
+    for ($i = 0; $i -lt $strikeVals.Count; $i++) {
+        $s = $strikeVals[$i]
+        $tail = if ($i -eq $strikeVals.Count - 1) { '' } else { " $bt" }
+        $lines += "    --move-call ${predictPkgId}::market_key::down $bt"
+        $lines += "        @$oracleId $expiry $s $bt"
+        $lines += "    --assign key_$i $bt"
+        $lines += "    --move-call ${packageId}::r3::redeem_permissionless '<$dusdcType>' $bt"
+        $lines += "        @$vaultObjId @$predictId @<PREDICT_MANAGER_OBJ_ID> @$oracleId key_$i 5000 @0x6$tail"
+    }
     $redeemPath = Join-Path $DataDir 'replay_finalise_ptb.txt'
-    $redeemTemplate | Out-File -FilePath $redeemPath -Encoding utf8
-    Write-Host "PTB template : $redeemPath"
+    ($lines -join "`n") + "`n" | Out-File -FilePath $redeemPath -Encoding utf8
+    Write-Host "PTB template : $redeemPath  (legs: $($strikeVals.Count))"
 
     # Update log with final-state snapshot.
     $log | Add-Member -Force -NotePropertyName final_state -NotePropertyValue ([pscustomobject]@{
