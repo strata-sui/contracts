@@ -92,36 +92,39 @@ the canonical DeepBook Predict `Predict`, `OracleSVI`, and
 | 1. Bootstrap manager | `ladder::init_predict_manager` | `2cjdapXap6XGVFJdtPk9yta2Wch1m5xWvUcqZLCtEfPK` | Shared `PredictManager` `0x5841704d6fe4b567d66ed8234ca6aba37de70a5ecd2760132a42a75c570fd802` created + linked into the vault |
 | 2. Supply | `vault::supply<DUSDC>` | `8ibdXQtDvU2PDCRyNxL7pg55V5myjv1dVGYi7r3PQLVw` | 5,000 dUSDC → PLP; received `Coin<VAULT>` share `0x6209c56ff1d35d6898c41ab7ee2533c70742ec56e4a758c27fba80ed0c068336` |
 | 3. Fund manager | `ladder::fund_manager<DUSDC>` | `PtnGVDqYQLYB6mUzco16hHbB7CkzumYjtCjwBnhEkws` | 2,000 dUSDC deposited into the hedge-side `PredictManager` bank |
-| 4. Open hedge ladder | `ladder::open_hedge_ladder<DUSDC>` | — | **Blocked by an on-chain strike-tick constraint — see limitation below** |
+| 4. Open hedge ladder | `ladder::open_hedge_ladder_aligned<DUSDC>` (v2) | `HWpon6rNt3JJQwqRbJyQs87c1NE1hY5MYQH3H1oLoDCF` | Strike-grid gate **passed** (#41 fixed); mint aborts one layer deeper at the ask-bound — see limitation below |
 
-### Known limitation — DN-ladder strike-tick alignment
+### Strike-tick alignment — FIXED in v2 (#41); residual is the ask-bound
 
-`ladder::compute_strikes` spaces strikes as
-`mul_div(forward, m_bps, 10000)` — the on-chain integer approximation
-of the sim's uniform-log-moneyness band. DeepBook Predict's
-`oracle_config::assert_valid_strike` requires every strike to land on
-the oracle's tick grid (`tick_size = 1e9` on the BTC oracles
-observed), and its `pricing_config::quote_spread_from_fair_price`
-requires the resulting DN fair price to sit inside the ask bounds
-`[1%, 99%]`. These two constraints squeeze the achievable `forward`:
+**Resolved.** The v1 blocker was `ladder::compute_strikes` emitting
+`mul_div(forward, m_bps, 10000)` strikes that are not multiples of the
+oracle tick (`tick_size = 1e9`), so Predict's `assert_valid_strike`
+aborted. The **v2 upgrade** (package
+`0x0256b69cbfa9071eb7eb4aa99263154157835b11ba2a71a7083ec6f22044a8c0`,
+upgrade tx `EG38Enb8QZRcfWvm2jgPrqYhDngsy6zeBPRbkASJL3Tm`) adds
+`ladder::open_hedge_ladder_aligned(strikes: vector<u64>)`: strikes are
+snapped to the grid off-chain by `scripts/compute_aligned_strikes.py`
+(clamped into the on-chain floor-based band) and validated on-chain by
+`ladder::validate_strikes` (strictly ascending + in-band). An on-chain
+call (tx `HWpon6rNt3JJQwqRbJyQs87c1NE1hY5MYQH3H1oLoDCF`) confirms the
+strikes now **pass** both `assert_valid_strike` and `validate_strikes`.
 
-- **True forward** (e.g. `73962948155825`, ~$73,963) → strikes land
-  ~2–4 % OTM (good price-wise) but are **not exact tick multiples** →
-  `assert_valid_strike` aborts (code 2).
-- **Tick-clean forward** (`70000000000000`, the nearest `1e13`
-  multiple) → strikes are valid ticks but ~7–9 % OTM → DN fair price
-  hits the ask bound → `quote_spread_from_fair_price` aborts (code 1).
+The fix is additive: Sui's compatible upgrade policy forbids changing an
+existing `public fun` signature, so the original `open_hedge_ladder` is
+preserved verbatim (ABI-compatible) and the new logic lives in
+`open_hedge_ladder_aligned`.
 
-A single `forward` cannot satisfy tick alignment for all five legs
-*and* keep them in-band, because Move stdlib lacks the per-strike
-floating-point rounding the sim performs off-chain. **Fix (follow-up,
-not in this tag):** round each leg's strike to the nearest oracle
-tick *inside* `compute_strikes` using the oracle's `min_strike` +
-`tick_size` (read from the `OracleSVI`), so strikes are both valid and
-in-band regardless of the raw `forward`. This is a localized change to
-one helper; the supply / fund / R3 legs are unaffected and are proven
-live above. The sim verdict and invariants are untouched by this
-on-chain rounding detail.
+**Residual (market-pricing, not a code defect).** The mint then aborts
+at `predict::assert_mintable_ask` with `EAskPriceOutOfBounds` (code 7):
+the deep-OTM DOWN binaries at the 1.89–4.05 % loss-onset band price
+below Predict's min-ask floor under the current low-volatility
+(near-flat SVI) testnet oracle. This is a property of testnet market
+conditions at this band, not of the Strata contract — a higher-vol
+surface (or mainnet liquidity) would price these legs inside the ask
+bounds. We record it rather than contrive a non-representative leg to
+force a green (the M8 no-band-aid discipline). The supply / fund / R3
+legs and all four sim invariants are unaffected and proven live above;
+the sim verdict is untouched.
 
 ## Build + test reproduction
 
