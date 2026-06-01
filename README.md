@@ -114,17 +114,37 @@ existing `public fun` signature, so the original `open_hedge_ladder` is
 preserved verbatim (ABI-compatible) and the new logic lives in
 `open_hedge_ladder_aligned`.
 
-**Residual (market-pricing, not a code defect).** The mint then aborts
-at `predict::assert_mintable_ask` with `EAskPriceOutOfBounds` (code 7):
-the deep-OTM DOWN binaries at the 1.89–4.05 % loss-onset band price
-below Predict's min-ask floor under the current low-volatility
-(near-flat SVI) testnet oracle. This is a property of testnet market
-conditions at this band, not of the Strata contract — a higher-vol
-surface (or mainnet liquidity) would price these legs inside the ask
-bounds. We record it rather than contrive a non-representative leg to
-force a green (the M8 no-band-aid discipline). The supply / fund / R3
-legs and all four sim invariants are unaffected and proven live above;
-the sim verdict is untouched.
+**Residual (market-pricing, not a code defect) — and how it is cleared
+WITHOUT touching the band.** On short-tenor, low-σ testnet oracles the
+mint aborts at `predict::assert_mintable_ask` with `EAskPriceOutOfBounds`:
+the deep-OTM DOWN binaries at the 1.89–4.05 % loss-onset band price below
+Predict's 1 % min-ask floor.
+
+The band is held **FIXED** by anti-cherry-pick discipline — it is pinned
+to the PLP loss-onset diagnostic (`[9595, 9811]` bps, set in S0 before any
+Sortino was computed). The 1 % ask floor is cleared by **surface
+vol/tenor — mainnet real-vol, or a higher-vol testnet oracle — NOT by
+moving the band.** Moving the band toward the forward would clear the
+floor too, but that is precisely the outcome-tuning the discipline
+forbids, so we decline it.
+
+This is demonstrated two ways, both with the band untouched:
+- **Calculator** (`scripts/ask_floor_vol_sweep.py`): a byte-faithful
+  reproduction of Predict's ask formula shows the fixed band clears the
+  1 % floor once `σ_atm ≳ 1.16 %`; the live SVI sample already clears at
+  ~4.6 %, mainnet-like vol at ~36 %.
+- **Live on-chain** (`scripts/probe_oracle_ask.py` + a real open): probing
+  every live BTC oracle found the longer-tenor ones above that threshold;
+  opening the SAME pinned band against a ~18 h-tenor oracle
+  (`0x8ce7edba…`) **succeeded** — tx
+  `Fp6ipCErtEVqi9JsEewgRcmaCyZbLr9H63hyHzDQvpzx` minted real DN binaries
+  with `within_max_exposure = true`. Only the oracle's tenor/vol differs;
+  the band is identical. (See REPLAY.md.)
+
+We record the short-tenor block rather than contrive a non-representative
+leg to force a green (the no-band-aid discipline). The supply / fund / R3
+legs and all four sim invariants are unaffected and proven live above; the
+sim verdict is untouched.
 
 ## Build + test reproduction
 
