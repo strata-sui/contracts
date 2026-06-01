@@ -141,7 +141,7 @@ sui client ptb `
         @$vaultId `
         @<PREDICT_MANAGER_OBJ_ID> `
         @<DUSDC_RESERVE_COIN_OBJ_ID> `
-    --move-call $packageId::ladder::open_hedge_ladder '<$dusdcType>' `
+    --move-call $packageId::ladder::open_hedge_ladder_aligned '<$dusdcType>' `
         @$vaultId `
         @<PREDICT_SHARED_OBJ> `
         @<PREDICT_MANAGER_OBJ_ID> `

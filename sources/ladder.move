@@ -298,6 +298,77 @@ public fun max_ladder_size(): u64 { MAX_LADDER_SIZE }
 
 // ---- Hedge-open orchestration -----------------------------------------
 
+/// ORIGINAL v1 entry — PRESERVED VERBATIM for upgrade compatibility (Sui's
+/// "compatible" policy forbids changing an existing `public fun` signature).
+/// DEPRECATED on-chain: `compute_strikes` emits ungridded strikes that revert
+/// inside `predict::mint::assert_valid_strike` (#41). Use
+/// `open_hedge_ladder_aligned` (pre-snapped strikes) instead. Kept callable so
+/// the published v1 ABI is unchanged.
+public fun open_hedge_ladder<Quote>(
+    self: &mut Vault,
+    predict_obj: &mut Predict,
+    manager: &mut PredictManager,
+    oracle_svi: &OracleSVI,
+    expiry: u64,
+    forward: u64,
+    n_strikes: u64,
+    m_lo_bps: u64,
+    m_hi_bps: u64,
+    per_leg_quantity: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    vault::assert_admin(self, ctx);
+    assert!(vault::has_predict_manager(self), EManagerNotInitialised);
+    let recorded = *option::borrow(vault::predict_manager_id(self));
+    assert!(object::id(manager) == recorded, EManagerMismatch);
+    assert!(per_leg_quantity > 0, EZeroBudget);
+
+    let strikes = compute_strikes(forward, m_lo_bps, m_hi_bps, n_strikes);
+    let oracle_id = oracle::id(oracle_svi);
+
+    let mut k: u64 = 0;
+    while (k < n_strikes) {
+        let strike_k = *vector::borrow(&strikes, k);
+        let key = market_key::down(oracle_id, expiry, strike_k);
+        predict::mint<Quote>(
+            predict_obj,
+            manager,
+            oracle_svi,
+            key,
+            per_leg_quantity,
+            clock,
+            ctx,
+        );
+        vault::bump_max_payout(self, per_leg_quantity);
+        event::emit(LadderLegOpened {
+            vault_id: object::id(self),
+            manager_id: recorded,
+            oracle_id,
+            expiry,
+            strike: strike_k,
+            leg_index: k,
+            quantity: per_leg_quantity,
+        });
+        k = k + 1;
+    };
+
+    vault::assert_within_max_exposure(self);
+
+    event::emit(LadderOpened {
+        vault_id: object::id(self),
+        manager_id: recorded,
+        oracle_id,
+        expiry,
+        ladder_size: n_strikes,
+        m_lo_bps,
+        m_hi_bps,
+        forward,
+        sleeve_budget: per_leg_quantity * n_strikes,
+        legs_minted: n_strikes,
+    });
+}
+
 /// Admin-only: open a DN-binary ladder against `oracle` + `expiry`
 /// from a caller-supplied, pre-aligned `strikes` vector. Each leg
 /// pulls its premium (= per-leg quantity × per-contract ask) from the
@@ -307,7 +378,14 @@ public fun max_ladder_size(): u64 { MAX_LADDER_SIZE }
 /// <= max_exposure_bps * balance_total` — is asserted post-mint via
 /// `vault::assert_within_max_exposure(self)`.
 ///
-/// #41 GRID-SNAP FIX: the previous version derived strikes on-chain via
+/// #41 SHIPPED AS A NEW FUNCTION (NOT a signature change to the original
+/// `open_hedge_ladder`): Sui's default "compatible" upgrade policy forbids
+/// changing an existing `public fun` signature, so the grid-snap fix lands
+/// additively here. The original `open_hedge_ladder` is preserved verbatim
+/// above for link/layout compatibility; it remains the ungridded path that
+/// reverts on-chain — callers use THIS function.
+///
+/// #41 GRID-SNAP FIX: the original derived strikes on-chain via
 /// `compute_strikes(forward, ...)`, emitting arbitrary
 /// `mul_div(forward, m_k_bps, 10000)` values that are NOT multiples of
 /// the live grid tick (`strike % 1e9 == 0`) — so `predict::mint`'s
@@ -339,7 +417,7 @@ public fun max_ladder_size(): u64 { MAX_LADDER_SIZE }
 /// paid). The admin should monitor `dusdc_in_manager` and call
 /// `fund_manager` if the manager balance is insufficient — `mint`
 /// reverts with `EWithdrawExceedsAvailable` otherwise.
-public fun open_hedge_ladder<Quote>(
+public fun open_hedge_ladder_aligned<Quote>(
     self: &mut Vault,
     predict_obj: &mut Predict,
     manager: &mut PredictManager,

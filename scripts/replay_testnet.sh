@@ -209,7 +209,7 @@ sui client ptb \\
         @${VAULT_ID} \\
         @<PREDICT_MANAGER_OBJ_ID> \\
         @<DUSDC_RESERVE_COIN_OBJ_ID> \\
-    --move-call ${PACKAGE_ID}::ladder::open_hedge_ladder '<${DUSDC_TYPE}>' \\
+    --move-call ${PACKAGE_ID}::ladder::open_hedge_ladder_aligned '<${DUSDC_TYPE}>' \\
         @${VAULT_ID} \\
         @${PREDICT_ID} \\
         @<PREDICT_MANAGER_OBJ_ID> \\
