@@ -1,0 +1,167 @@
+{
+  "any_clear": true,
+  "oracles": [
+    {
+      "oracle_id": "0x22fd7a1e422f610e0f56a6fcb0933b8e68df3212a20476a2df27c38cb491b4b9",
+      "mins_out": 1.9,
+      "sigma": 0.001,
+      "b": 1.8182e-05,
+      "forward": 71508202370374,
+      "min_leg_ask": 0.005,
+      "clears": false
+    },
+    {
+      "oracle_id": "0xc2136220b6b4ee521deadcfe3e8f7bc8b5c5ff78149ae020a4416183ca3e95ec",
+      "mins_out": 16.9,
+      "sigma": 0.001,
+      "b": 0.0001,
+      "forward": 71497726239714,
+      "min_leg_ask": 0.005,
+      "clears": false
+    },
+    {
+      "oracle_id": "0xba95fa8d4750f90b23a1d441d9006672ba4ce6e6a5a69a7142575531990c2112",
+      "mins_out": 31.9,
+      "sigma": 0.001,
+      "b": 0.000107204,
+      "forward": 71497646176728,
+      "min_leg_ask": 0.005,
+      "clears": false
+    },
+    {
+      "oracle_id": "0x33040a3e4f7fc0e4f7bf9a766c8fec37c00b8e6ec8853cf267974265210f42f7",
+      "mins_out": 46.9,
+      "sigma": 0.001,
+      "b": 0.000160708,
+      "forward": 71497566113831,
+      "min_leg_ask": 0.005,
+      "clears": false
+    },
+    {
+      "oracle_id": "0x45f0a12c6c7e72ffd0fc92fb88a1546d5954126fb47af896b69e0c2118492866",
+      "mins_out": 61.9,
+      "sigma": 0.001,
+      "b": 0.000200904,
+      "forward": 71497486051025,
+      "min_leg_ask": 0.005,
+      "clears": false
+    },
+    {
+      "oracle_id": "0xd0bb74d2cb368516eeb4e996eb798cfe924d6513d4feb2d3bcf934f308964b40",
+      "mins_out": 76.9,
+      "sigma": 0.001000064,
+      "b": 0.00025737,
+      "forward": 71497405988307,
+      "min_leg_ask": 0.005,
+      "clears": false
+    },
+    {
+      "oracle_id": "0xcdf5a5febff6689cb513f5e36e9efd9950ec166e08340864b3273fc5cf1dd564",
+      "mins_out": 91.9,
+      "sigma": 0.007134952,
+      "b": 0.000287616,
+      "forward": 71515978022360,
+      "min_leg_ask": 0.005,
+      "clears": false
+    },
+    {
+      "oracle_id": "0xfd9fbcf2a7833382ce07a940974c18b0dbf000d5b9583d6a4df9d0a0b8c570d7",
+      "mins_out": 106.9,
+      "sigma": 0.002583908,
+      "b": 0.000290818,
+      "forward": 71520355506064,
+      "min_leg_ask": 0.005,
+      "clears": false
+    },
+    {
+      "oracle_id": "0x84e9fcc3da6bab053449053add526b309a01428ff8036be303903365ee9b8ecf",
+      "mins_out": 166.9,
+      "sigma": 0.004526835,
+      "b": 0.000433834,
+      "forward": 71507385398080,
+      "min_leg_ask": 0.005005,
+      "clears": false
+    },
+    {
+      "oracle_id": "0x1fe79f55c9e2a58627466c43a642feb1f65d831e18f03cda8850e34e448f4adf",
+      "mins_out": 226.9,
+      "sigma": 0.003320011,
+      "b": 0.000701181,
+      "forward": 71505591275550,
+      "min_leg_ask": 0.005119,
+      "clears": false
+    },
+    {
+      "oracle_id": "0x21d0ccc41cdf48f8171ab8bed02bebb2173f618e6ba1f6ec0fc680ffb509476a",
+      "mins_out": 286.9,
+      "sigma": 0.00143222,
+      "b": 0.001033347,
+      "forward": 71519701350971,
+      "min_leg_ask": 0.00575,
+      "clears": false
+    },
+    {
+      "oracle_id": "0x8ce7edba97960762335647038e6ed8919079d942b15daef278b8b3709e7b7e04",
+      "mins_out": 1066.9,
+      "sigma": 0.012490632,
+      "b": 0.007653455,
+      "forward": 71514789001815,
+      "min_leg_ask": 0.058798,
+      "clears": true
+    },
+    {
+      "oracle_id": "0x73264224f217e6f90b8b91f7b361a2a9d80feaab9da1e61315ad241020744ae6",
+      "mins_out": 2506.9,
+      "sigma": 0.023993423,
+      "b": 0.010930543,
+      "forward": 71526070384731,
+      "min_leg_ask": 0.122655,
+      "clears": true
+    },
+    {
+      "oracle_id": "0xe350d3be55280c5e5a10866c54f3d4d4810a68dc139f31e787432e1610f3f0d1",
+      "mins_out": 3946.9,
+      "sigma": 0.026682206,
+      "b": 0.014525569,
+      "forward": 71534430779026,
+      "min_leg_ask": 0.162904,
+      "clears": true
+    },
+    {
+      "oracle_id": "0xb79524498a9947307e192d8045772150dc47aade4f9e09bd4b6fe3236b9e3125",
+      "mins_out": 5386.9,
+      "sigma": 0.024793409,
+      "b": 0.01882565,
+      "forward": 71550055834606,
+      "min_leg_ask": 0.194823,
+      "clears": true
+    },
+    {
+      "oracle_id": "0x195833aeee071530d2bdcd2e03916b7458d57c81ed540b82d6e1cb594bdf41f2",
+      "mins_out": 15466.9,
+      "sigma": 0.067639275,
+      "b": 0.026705988,
+      "forward": 71588340028626,
+      "min_leg_ask": 0.292434,
+      "clears": true
+    },
+    {
+      "oracle_id": "0x1368db417891e8c7d4a083e1daa1fed3b52d33d93dfe7324e37c5e15b6b6a872",
+      "mins_out": 25546.9,
+      "sigma": 0.123160872,
+      "b": 0.038260577,
+      "forward": 71621202381359,
+      "min_leg_ask": 0.338174,
+      "clears": true
+    },
+    {
+      "oracle_id": "0x5169649f6bf3ba756bbbef3a90a8e0da60883bbd7f0bb0fcb8acc2321ef6d63d",
+      "mins_out": 35626.9,
+      "sigma": 0.145502594,
+      "b": 0.052686286,
+      "forward": 71685277280756,
+      "min_leg_ask": 0.362416,
+      "clears": true
+    }
+  ]
+}
