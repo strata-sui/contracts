@@ -7,5 +7,9 @@
   "deployer_address": "0xe7b270554f5e3cb61f178f0411a71601b9d4c5a3114f26fa40104d4b22696add",
   "deploy_timestamp": "2026-05-30T14:21:56.266570Z",
   "env": "testnet",
-  "notes": "M7 manual publish via WSL sui 1.73.0 + Published.toml cache mechanism. Links canonical predict/deepbook/token."
+  "notes": "M7 manual publish via WSL sui 1.73.0 + Published.toml cache mechanism. Links canonical predict/deepbook/token.",
+  "upgraded_package_id": "0x0256b69cbfa9071eb7eb4aa99263154157835b11ba2a71a7083ec6f22044a8c0",
+  "upgrade_tx_digest": "EG38Enb8QZRcfWvm2jgPrqYhDngsy6zeBPRbkASJL3Tm",
+  "package_version": 2,
+  "upgrade_notes": "#41 grid-snap fix shipped as a Move package UPGRADE (v1->v2) from the canonical deployer via WSL sui 1.73.0, 2026-06-01. original-id unchanged (0xb2986cb6...); the call target is now the upgraded id. Added open_hedge_ladder_aligned(strikes: vector<u64>) + validate_strikes; original open_hedge_ladder preserved verbatim for ABI compatibility. Vault / upgrade_cap / share_metadata objects unchanged."
 }
