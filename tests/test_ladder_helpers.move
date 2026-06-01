@@ -13,6 +13,9 @@ use strata_vault::ladder;
 
 const FORWARD: u64 = 60_000_000_000;  // $60,000 at 6 decimals (matches dUSDC).
 
+// #41: live BTC oracle scale is 1e9-per-USD. $100,000 = 1e14.
+const FORWARD_1E9: u64 = 100_000_000_000_000;
+
 // ---- compute_strikes: shape + monotonicity + bounds --------------------
 
 #[test]
@@ -88,6 +91,96 @@ fun test_strikes_oversize_rejected() {
 fun test_strikes_inverted_band_rejected() {
     // m_lo > m_hi is invalid.
     let _ = ladder::compute_strikes(FORWARD, 9811, 9595, 3);
+}
+
+// ---- validate_strikes: #41 grid-snap caller-supplied path --------------
+// band @ FORWARD_1E9 = [95_950_000_000_000, 98_110_000_000_000].
+// Sample legs are tick-aligned (multiples of 1e9) and strictly ascending.
+
+#[test]
+fun test_validate_strikes_accepts_valid_ladder() {
+    let strikes = vector[
+        96_000_000_000_000,
+        96_500_000_000_000,
+        97_000_000_000_000,
+        97_500_000_000_000,
+        98_000_000_000_000,
+    ];
+    let n = ladder::validate_strikes(FORWARD_1E9, 9595, 9811, &strikes);
+    assert!(n == 5, 1);
+}
+
+#[test]
+#[expected_failure(abort_code = 207, location = strata_vault::ladder)]
+fun test_validate_strikes_rejects_below_band() {
+    // First strike below band_lo (95_950_000_000_000) → EStrikesOutOfBand.
+    let strikes = vector[
+        95_000_000_000_000,
+        96_500_000_000_000,
+        97_000_000_000_000,
+        97_500_000_000_000,
+        98_000_000_000_000,
+    ];
+    let _ = ladder::validate_strikes(FORWARD_1E9, 9595, 9811, &strikes);
+}
+
+#[test]
+#[expected_failure(abort_code = 207, location = strata_vault::ladder)]
+fun test_validate_strikes_rejects_above_band() {
+    // Last strike above band_hi (98_110_000_000_000) → EStrikesOutOfBand.
+    let strikes = vector[
+        96_000_000_000_000,
+        96_500_000_000_000,
+        97_000_000_000_000,
+        97_500_000_000_000,
+        99_000_000_000_000,
+    ];
+    let _ = ladder::validate_strikes(FORWARD_1E9, 9595, 9811, &strikes);
+}
+
+#[test]
+#[expected_failure(abort_code = 206, location = strata_vault::ladder)]
+fun test_validate_strikes_rejects_non_increasing() {
+    // Equal adjacent strikes are not strictly ascending → EStrikesNotIncreasing.
+    let strikes = vector[
+        96_000_000_000_000,
+        96_500_000_000_000,
+        96_500_000_000_000,
+        97_500_000_000_000,
+        98_000_000_000_000,
+    ];
+    let _ = ladder::validate_strikes(FORWARD_1E9, 9595, 9811, &strikes);
+}
+
+#[test]
+#[expected_failure(abort_code = 200, location = strata_vault::ladder)]
+fun test_validate_strikes_rejects_empty() {
+    let strikes = vector<u64>[];
+    let _ = ladder::validate_strikes(FORWARD_1E9, 9595, 9811, &strikes);
+}
+
+#[test]
+#[expected_failure(abort_code = 200, location = strata_vault::ladder)]
+fun test_validate_strikes_rejects_oversize() {
+    // 8 legs > MAX_LADDER_SIZE → ELadderSizeOutOfBounds.
+    let strikes = vector[
+        96_000_000_000_000,
+        96_200_000_000_000,
+        96_400_000_000_000,
+        96_600_000_000_000,
+        96_800_000_000_000,
+        97_000_000_000_000,
+        97_200_000_000_000,
+        97_400_000_000_000,
+    ];
+    let _ = ladder::validate_strikes(FORWARD_1E9, 9595, 9811, &strikes);
+}
+
+#[test]
+#[expected_failure(abort_code = 205, location = strata_vault::ladder)]
+fun test_validate_strikes_rejects_inverted_band() {
+    let strikes = vector[96_000_000_000_000, 97_000_000_000_000, 98_000_000_000_000];
+    let _ = ladder::validate_strikes(FORWARD_1E9, 9811, 9595, &strikes);
 }
 
 // ---- compute_per_leg_budget --------------------------------------------

@@ -65,6 +65,12 @@ const EManagerNotInitialised: u64 = 202;
 const EManagerMismatch: u64 = 203;
 const EZeroBudget: u64 = 204;
 const EBandInvalid: u64 = 205;
+/// Caller-supplied `strikes` vector is not strictly ascending (#41 fix).
+const EStrikesNotIncreasing: u64 = 206;
+/// A caller-supplied strike falls outside the provenance band
+/// `[mul_div(forward, m_lo_bps, 10000), mul_div(forward, m_hi_bps, 10000)]`
+/// (#41 fix).
+const EStrikesOutOfBand: u64 = 207;
 
 // ---- Constants — anchored to sim, NOT outcome-tuned --------------------
 
@@ -176,8 +182,22 @@ public fun fund_manager<Quote>(
 
 /// Compute the M strike prices uniform-in-bps across the band
 /// `[m_lo_bps, m_hi_bps]` of forward, expressed in the forward's
-/// integer base units (so a `forward = 60_000_000_000` Predict
-/// representation maps to `strike[k] = forward * m_k_bps / 10000`).
+/// integer base units.
+///
+/// SCALE (Bug-2 fix, #41): the live BTC oracle uses a **1e9-per-USD**
+/// scale, NOT the 1e6-per-USD this comment previously assumed. So
+/// `$100,000 = 100_000_000_000_000` (1e14) and the grid floor
+/// `min_strike = 50_000_000_000_000` (5e13 = $50,000), tick
+/// `1_000_000_000` (1e9). `forward` MUST be read from
+/// `oracle::forward_price()` in those native units.
+///
+/// NOTE (#41): this helper is now a REFERENCE only. `open_hedge_ladder`
+/// no longer calls it — the raw `forward * m_k_bps / 10000` output is
+/// NOT tick-aligned to the Predict grid (`strike % 1e9 == 0`) and so
+/// reverts inside `predict::mint::assert_valid_strike`. The aligned
+/// strikes are computed off-chain (`scripts/compute_aligned_strikes.py`)
+/// and passed in as a pre-snapped `strikes` vector. This helper is kept
+/// for provenance + M6 spacing tests.
 ///
 /// On-chain APPROXIMATION of the sim's uniform-in-log-moneyness
 /// (`np.linspace(np.log(m_lo), np.log(m_hi), M)`). For the narrow
@@ -215,6 +235,43 @@ public fun compute_strikes(
     out
 }
 
+/// Validate a caller-supplied, pre-aligned `strikes` vector (#41 fix).
+/// Returns the ladder size `n`. Pure (no chain state) — auditor- and
+/// unit-test-checkable. Aborts with:
+///   * `EBandInvalid` if the provenance band is malformed,
+///   * `ELadderSizeOutOfBounds` if `n` is outside `[MIN, MAX]`,
+///   * `EStrikesOutOfBand` if any strike is outside the band
+///     `[mul_div(forward, m_lo_bps, 10000), mul_div(forward, m_hi_bps, 10000)]`,
+///   * `EStrikesNotIncreasing` if the vector is not strictly ascending.
+///
+/// NOTE: this does NOT verify grid-tick alignment (`strike % tick == 0`)
+/// — that is owned by Predict's `mint` (`grid_params` is module-private
+/// there). The off-chain snapper guarantees alignment; `mint` is the
+/// backstop.
+public fun validate_strikes(
+    forward: u64,
+    m_lo_bps: u64,
+    m_hi_bps: u64,
+    strikes: &vector<u64>,
+): u64 {
+    assert!(m_lo_bps > 0 && m_lo_bps <= m_hi_bps && m_hi_bps < 10000, EBandInvalid);
+    let n = vector::length(strikes);
+    assert!(n >= MIN_LADDER_SIZE && n <= MAX_LADDER_SIZE, ELadderSizeOutOfBounds);
+    let band_lo = mul_div(forward, m_lo_bps, 10000);
+    let band_hi = mul_div(forward, m_hi_bps, 10000);
+    let mut v: u64 = 0;
+    while (v < n) {
+        let s = *vector::borrow(strikes, v);
+        assert!(s >= band_lo && s <= band_hi, EStrikesOutOfBand);
+        if (v + 1 < n) {
+            let s_next = *vector::borrow(strikes, v + 1);
+            assert!(s < s_next, EStrikesNotIncreasing);
+        };
+        v = v + 1;
+    };
+    n
+}
+
 /// Per-leg sleeve allocation: `budget_per_strike = sleeve_budget / n`.
 /// Mirrors `sim/model/dn_ladder.py:167-170` ("Uniform sleeve
 /// allocation across the ladder"). Returns the per-leg integer
@@ -241,19 +298,35 @@ public fun max_ladder_size(): u64 { MAX_LADDER_SIZE }
 
 // ---- Hedge-open orchestration -----------------------------------------
 
-/// Admin-only: open an `n_strikes`-leg DN-binary ladder against
-/// `oracle` + `expiry`. Each leg pulls its premium (= per-leg
-/// quantity × per-contract ask) from the manager's balance via
-/// `predict::mint`. Strata-side `total_max_payout` bumps by the
-/// aggregate notional (= Σ leg_quantity). The S5R3.3 Bug B
-/// invariant — `(max_payout * 10000) <= max_exposure_bps *
-/// balance_total` — is asserted post-mint via
+/// Admin-only: open a DN-binary ladder against `oracle` + `expiry`
+/// from a caller-supplied, pre-aligned `strikes` vector. Each leg
+/// pulls its premium (= per-leg quantity × per-contract ask) from the
+/// manager's balance via `predict::mint`. Strata-side
+/// `total_max_payout` bumps by the aggregate notional (= Σ
+/// leg_quantity). The S5R3.3 Bug B invariant — `(max_payout * 10000)
+/// <= max_exposure_bps * balance_total` — is asserted post-mint via
 /// `vault::assert_within_max_exposure(self)`.
 ///
-/// The `forward` parameter is the BTC oracle's current price in
-/// Predict's quote-unit scale (typically 6 decimals; e.g.
-/// $60,000 = 60_000_000_000 base units). Strikes derived by
-/// `compute_strikes(forward, m_lo_bps, m_hi_bps, n)`.
+/// #41 GRID-SNAP FIX: the previous version derived strikes on-chain via
+/// `compute_strikes(forward, ...)`, emitting arbitrary
+/// `mul_div(forward, m_k_bps, 10000)` values that are NOT multiples of
+/// the live grid tick (`strike % 1e9 == 0`) — so `predict::mint`'s
+/// internal `assert_valid_strike` reverted. We now take a
+/// `strikes: vector<u64>` snapped off-chain to the grid
+/// (`scripts/compute_aligned_strikes.py`), and verify on-chain that it
+/// is strictly ascending (`EStrikesNotIncreasing`) and every strike
+/// lies within the provenance band
+/// `[mul_div(forward, m_lo_bps, 10000), mul_div(forward, m_hi_bps, 10000)]`
+/// (`EStrikesOutOfBand`). `forward` / `m_lo_bps` / `m_hi_bps` remain as
+/// provenance + band-sanity inputs only; `compute_strikes` is kept as a
+/// reference helper but is no longer called here. The grid tick itself
+/// is enforced by Predict's `mint` (it owns `grid_params`); we do not
+/// re-implement `assert_valid_strike`.
+///
+/// SCALE (Bug-2 fix): `forward` is the BTC oracle's current price on the
+/// live **1e9-per-USD** scale (read from `oracle::forward_price()`;
+/// e.g. $100,000 = 100_000_000_000_000). NOT the 1e6-per-USD an earlier
+/// comment assumed.
 ///
 /// Per-leg quantity is the per-leg budget directly (1 contract = $1
 /// max payout in Predict's notional convention — `quantity` IS the
@@ -273,9 +346,9 @@ public fun open_hedge_ladder<Quote>(
     oracle_svi: &OracleSVI,
     expiry: u64,
     forward: u64,
-    n_strikes: u64,
     m_lo_bps: u64,
     m_hi_bps: u64,
+    strikes: vector<u64>,
     per_leg_quantity: u64,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -286,21 +359,21 @@ public fun open_hedge_ladder<Quote>(
     assert!(object::id(manager) == recorded, EManagerMismatch);
     assert!(per_leg_quantity > 0, EZeroBudget);
 
-    let strikes = compute_strikes(forward, m_lo_bps, m_hi_bps, n_strikes);
+    // Validate the caller-supplied, pre-aligned strikes (#41): size in
+    // bounds, strictly ascending, every strike inside the provenance band.
+    let n = validate_strikes(forward, m_lo_bps, m_hi_bps, &strikes);
+
     let oracle_id = oracle::id(oracle_svi);
 
     let mut k: u64 = 0;
-    while (k < n_strikes) {
+    while (k < n) {
         let strike_k = *vector::borrow(&strikes, k);
         let key = market_key::down(oracle_id, expiry, strike_k);
         // Predict::mint pulls from manager.balance internally; reverts
-        // if the manager is under-funded. Strata-side `dusdc_in_manager`
-        // is reduced by the premium AFTER mint succeeds — but Predict
-        // does not return the cost as a value; we emit the per-leg
-        // event with the quantity (which is the notional, bumping
-        // `total_max_payout` 1:1). M6 integration tests will read the
-        // manager.balance delta from the event log for the audited
-        // premium total.
+        // if the manager is under-funded OR if `strike_k` is not a valid
+        // grid tick (its internal `assert_valid_strike` is the grid
+        // backstop — we pre-snap off-chain so this passes). Strata-side
+        // `total_max_payout` bumps by the quantity (the notional, 1:1).
         predict::mint<Quote>(
             predict_obj,
             manager,
@@ -334,11 +407,11 @@ public fun open_hedge_ladder<Quote>(
         manager_id: recorded,
         oracle_id,
         expiry,
-        ladder_size: n_strikes,
+        ladder_size: n,
         m_lo_bps,
         m_hi_bps,
         forward,
-        sleeve_budget: per_leg_quantity * n_strikes,
-        legs_minted: n_strikes,
+        sleeve_budget: per_leg_quantity * n,
+        legs_minted: n,
     });
 }
