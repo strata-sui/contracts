@@ -7,7 +7,7 @@ Strata's DN-ladder strikes must be multiples of the live Predict grid tick
 `forward * m_k_bps / 10000` values that are NOT tick-aligned, so
 `predict::mint::assert_valid_strike` reverts. This snapper computes the band
 strikes off-chain and rounds each to the nearest grid tick, producing a
-strictly-ascending vector the upgraded `open_hedge_ladder(strikes=...)` accepts.
+strictly-ascending vector the upgraded `open_hedge_ladder_aligned(strikes=...)` accepts.
 
 Grid params come from the predict-server oracles endpoint; `forward` MUST be the
 oracle's `forward_price()` in native (1e9-per-USD) units — NOT a REST field

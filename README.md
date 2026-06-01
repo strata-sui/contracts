@@ -21,11 +21,15 @@ vault, owned by Strata admin). User flow:
    via `predict::supply<DUSDC>`; the user receives a Strata vault
    share token `Coin<VAULT>` minted NAV-proportional to the PLP
    token-supply received.
-2. **Hedge.** Admin calls `ladder::open_hedge_ladder<DUSDC>` to
-   construct an M-leg DN-binary ladder against an active oracle.
-   Each leg's strike is set via the `compute_strikes` helper that
-   spaces strikes uniformly across the empirical PLP loss-onset
-   band (S0 diagnostic; anti-cherry-pick by construction).
+2. **Hedge.** Admin calls `ladder::open_hedge_ladder_aligned<DUSDC>`
+   (v2 #41 path) to construct an M-leg DN-binary ladder against an
+   active oracle. Strikes are snapped off-chain to the oracle grid
+   (`scripts/compute_aligned_strikes.py`) across the empirical PLP
+   loss-onset band (S0 diagnostic; anti-cherry-pick by construction)
+   and validated on-chain by `ladder::validate_strikes`. (The original
+   `open_hedge_ladder` + `compute_strikes` helper are retained for ABI
+   compatibility but are **deprecated** — `compute_strikes` emits
+   ungridded strikes that revert in Predict's `assert_valid_strike`.)
 3. **R3 escape-hatch.** After oracle settlement, **anyone** can call
    `r3::redeem_permissionless<DUSDC>` to realise the ladder's ITM
    payout via the verified
@@ -45,8 +49,8 @@ phase pinned:
 | Sim discovery | Move enforcement |
 |---|---|
 | **S5R3.2 Bug A** — share_price floored at 0 (depositor's loss bounded by deposit) | `vault::share_price_micro` reads `max(0, NAV / total_shares)` (`sources/vault.move::share_price_micro`) |
-| **S5R3.3 Bug B** — `total_max_payout / balance <= max_exposure` | `vault::assert_within_max_exposure` invoked post-mint at every `ladder::open_hedge_ladder` call |
-| **S4.1** — DN ladder shaped to PLP loss-onset band, uniform-in-log-moneyness | `ladder::compute_strikes` (uniform-in-bps on-chain approximation, sub-1% off log-uniform over the narrow 2.2% band) |
+| **S5R3.3 Bug B** — `total_max_payout / balance <= max_exposure` | `vault::assert_within_max_exposure` invoked post-mint at every `ladder::open_hedge_ladder_aligned` call |
+| **S4.1** — DN ladder shaped to PLP loss-onset band, uniform-in-log-moneyness | strikes snapped off-chain (`scripts/compute_aligned_strikes.py`, uniform-in-bps, sub-1% off log-uniform over the 2.2% band) + on-chain `ladder::validate_strikes` (in-band + ascending). `compute_strikes` is a retained-but-deprecated reference helper. |
 | **§3 anti-rug** — `f` upper bound 0.20 prevents griefing the hedge | `gov::set_f_bps` rejects values > `MAX_F_BPS = 2000` |
 
 Every Move assertion that mirrors a sim invariant cites the sim file
