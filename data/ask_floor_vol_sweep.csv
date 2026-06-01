@@ -1,0 +1,13 @@
+var_mult,sigma_atm,min_leg_ask,all_legs_clear_1pct,note
+0.003,0.0009,0.005,False,~ degenerate testnet oracle (observed; near-zero vol)
+0.01,0.001644,0.005,False,
+0.03,0.002847,0.005,False,
+0.1,0.005198,0.005,False,
+0.25,0.008219,0.005235,False,
+0.5,0.011623,0.011778,True,
+1.0,0.016437,0.045946,True,~ live testnet SVI sample (CLAUDE.md sec 4)
+2.0,0.023246,0.117155,True,
+4.0,0.032875,0.205006,True,
+8.0,0.046492,0.287938,True,
+16.0,0.06575,0.357537,True,~ mainnet-like real vol (stressed BTC)
+32.0,0.092984,0.413861,True,
