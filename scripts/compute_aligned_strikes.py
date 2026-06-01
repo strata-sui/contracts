@@ -41,6 +41,19 @@ MIN_FORWARD_FOR_BAND = 52_110_000_000_000  # ~5.211e13
 def aligned_down_strikes(
     forward, m_lo_bps, m_hi_bps, n, min_strike, tick_size, max_strike
 ):
+    # On-chain band bounds: ladder::validate_strikes uses the SAME floor-based
+    # formula (mul_div(forward, m_*_bps, 10000)) and rejects any strike outside
+    # [band_lo, band_hi]. Nearest-tick rounding can push the end legs just past
+    # those bounds, so we clamp into the tick-aligned sub-band
+    # [ceil(band_lo/tick), floor(band_hi/tick)] which is guaranteed to satisfy
+    # the on-chain check. Also respect the grid floor/ceiling [min, max].
+    band_lo = forward * m_lo_bps // 10000
+    band_hi = forward * m_hi_bps // 10000
+    lo_aligned = -(-band_lo // tick_size) * tick_size            # ceil to tick
+    hi_aligned = (band_hi // tick_size) * tick_size              # floor to tick
+    lo_aligned = max(lo_aligned, min_strike)
+    hi_aligned = min(hi_aligned, (max_strike // tick_size) * tick_size)
+
     if n == 1:
         raws = [forward * ((m_lo_bps + m_hi_bps) // 2) // 10000]
     else:
@@ -50,14 +63,16 @@ def aligned_down_strikes(
         ]
     out = []
     for r in raws:
-        steps = round((r - min_strike) / tick_size)
-        s = max(min_strike, min(min_strike + steps * tick_size, max_strike))
+        s = round(r / tick_size) * tick_size                     # nearest tick
+        s = min(max(s, lo_aligned), hi_aligned)                  # clamp into band
         out.append(s)
     if len(set(out)) != n or any(out[i] >= out[i + 1] for i in range(n - 1)):
         raise ValueError(
             "band too tight / forward too low — raise (m_hi-m_lo) span or lower n"
         )
-    assert all((s - min_strike) % tick_size == 0 for s in out)
+    assert all(s % tick_size == 0 for s in out)
+    # The on-chain validate_strikes invariant: every strike within the band.
+    assert all(band_lo <= s <= band_hi for s in out)
     assert all(min_strike <= s <= max_strike for s in out)
     return out
 
