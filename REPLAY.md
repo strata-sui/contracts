@@ -52,6 +52,42 @@ post-open. The band was NOT moved — only the oracle's tenor/vol differs —
 so this is a genuine green leg, not a cherry-pick. (n=2 vs the default 5 is
 a testnet gas-budget choice, not a design change.)
 
+**Settlement outcome (2026-06-02 → realized 2026-06-10) — the hedge PAID,
+and pillar 2's permissionless property was exercised by an INDEPENDENT
+third party.** Oracle `0x8ce7edba…` settled at `70_038_561_919_383`
+(~$70,038.56): BTC fell ~2.2% from the open forward (~$71,625) — landing
+INSIDE the pinned loss-onset band. Outcomes per leg:
+
+- leg 0, strike `68_725e9` (deep, ~4.02% OTM): settlement ABOVE strike →
+  expired worthless, payout `0`.
+- leg 1, strike `70_271e9` (shallow, ~1.86% OTM): settlement BELOW strike
+  → **full ITM payout `10_000_000` ($10)**.
+
+On 2026-06-10 14:03 UTC a third-party keeper (`0x69051698…`, not us)
+settled BOTH legs via the **underlying** `predict::redeem_permissionless`
+(txs `F8Ep7266e85NhBzXyjfDGCEjoBHC53JTFSTdD8pnLhHy` leg 0 payout 0,
+`DoGd42htTz9EY7MUpV2H4pHpw73W3GdKqpg6kts3Z9vb` leg 1 payout $10). Because
+Predict routes settlement proceeds to the position's manager regardless of
+executor (`deposit_permissionless`), the $10 landed in OUR manager.
+Verified to the micro-unit on-chain: manager balance `2_007_307_600` =
+$2,000 fund − $0.615504 − $2.076896 premiums + $0 + $10.00 payout.
+**Net hedge PnL on the dip: +$7.31 — the tail hedge paid off in a real
+market move, with zero action from us.** This is pillar 2's
+"anyone can crank settlement" property demonstrated organically.
+
+**Honest wrinkle (wrapper-bypass drift):** the keeper called the
+underlying entry, NOT our `r3::redeem_permissionless` wrapper — so the
+wrapper's Strata-side mirror updates (`reduce_max_payout`,
+`bump_dusdc_in_manager`) did not run: `vault.total_max_payout` reads a
+stale `20_000_000` and `vault.dusdc_in_manager` does not include the
+realized $10. Cosmetic at this scale but real: a third party settling via
+the underlying bypasses the vault's accounting mirror. Known Pattern-A
+limitation; future work is a permissionless reconciliation crank that
+syncs the mirror from `PositionRedeemed` events. The wrapper itself is
+unit-tested and its underlying path is exactly the one the keeper
+exercised; an on-chain tx THROUGH the wrapper needs a fresh
+open→settle→crank cycle (staged, pending operator go-ahead).
+
 Tables below record both honestly — no band-aid.
 
 ## Replay scenario (mirrors the sim S5R3 verification)
@@ -82,7 +118,9 @@ Tables below record both honestly — no band-aid.
 | ladder legs minted, higher-vol oracle (band fixed) | `≥1` | **2** (`PositionMinted` ×2, tx `Fp6ipCEr`) | ✅ live |
 | `total_max_payout` post-open (2-leg demo) | `> 0` | `20_000_000` ($20) | ✅ |
 | `within_max_exposure` post-open | `true` | `true` | ✅ |
-| ladder ITM legs at settle / R3 `liquid_cash_delta` | `≥1` / `> 0` | pending settlement (~18h-tenor oracle) | deferred |
+| ladder ITM legs at settle | `≥1` | **1** (leg 1 ITM, settlement $70,038.56 < strike $70,271) | ✅ live |
+| settlement liquid-cash realized into manager | `> 0` | **`10_000_000` ($10)** — manager balance `2_007_307_600`, micro-exact | ✅ live |
+| realized via `r3.move` wrapper | wrapper tx | swept by third-party keeper via the UNDERLYING `predict::redeem_permissionless` first (pillar-2 permissionlessness, organic) — wrapper crank staged on a fresh cycle | ◐ honest |
 | `share_price_micro ≥ 0` invariant throughout | `true` | `true` (1_400_468 post-open) | ✅ |
 
 The supply leg confirms the S5R3.2 share-price floor invariant on-chain
@@ -110,8 +148,10 @@ per M8 brief acceptance — NOT a band-aid acceptance window widening.
 | package upgrade v1→v2 (#41) | `EG38Enb8QZRcfWvm2jgPrqYhDngsy6zeBPRbkASJL3Tm` |
 | `ladder::open_hedge_ladder_aligned<DUSDC>` (short-tenor low-σ oracle) | `HWpon6rNt3JJQwqRbJyQs87c1NE1hY5MYQH3H1oLoDCF` — strike-grid **passed**; aborted at `assert_mintable_ask` (ask < 1%, environmental) |
 | `ladder::open_hedge_ladder_aligned<DUSDC>` (2-leg, ~18h-tenor oracle `0x8ce7edba…`, band fixed) | **`Fp6ipCErtEVqi9JsEewgRcmaCyZbLr9H63hyHzDQvpzx`** ✅ live — `PositionMinted` ×2, gas 0.055 SUI |
-| `r3::redeem_permissionless<DUSDC>` per leg | pending settlement (~18h-tenor oracle) |
-| `vault::redeem<DUSDC>` of Strata shares | not yet exercised (ladder open, awaiting settle) |
+| settlement realization, leg 0 (OTM, payout 0) | `F8Ep7266e85NhBzXyjfDGCEjoBHC53JTFSTdD8pnLhHy` — third-party keeper via underlying `predict::redeem_permissionless` |
+| settlement realization, leg 1 (**ITM, payout $10**) | `DoGd42htTz9EY7MUpV2H4pHpw73W3GdKqpg6kts3Z9vb` — same keeper; $10 deposited to OUR manager (`deposit_permissionless`) |
+| `r3::redeem_permissionless<DUSDC>` (our wrapper) | cycle-1 legs already swept (qty=0) — wrapper crank staged on a fresh open→settle cycle, pending operator go |
+| `vault::redeem<DUSDC>` of Strata shares | not yet exercised |
 
 ## Honest framing
 
