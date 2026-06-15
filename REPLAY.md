@@ -92,18 +92,22 @@ Tables below record both honestly — no band-aid.
 
 ## Replay scenario (mirrors the sim S5R3 verification)
 
-1. Deposit `100 dUSDC` into the Strata vault (`vault::supply<DUSDC>`).
-2. Open a 5-leg DN ladder against a current BTC oracle
-   (`ladder::open_hedge_ladder<DUSDC>` with `per_leg_qty = 5_000`
-   contracts = $25_000 total notional).
-3. Wait for oracle settlement (~1-2 oracle epochs on testnet, ≈ 10
-   minutes).
+1. Deposit `5,000 dUSDC` into the Strata vault (`vault::supply<DUSDC>`) —
+   the real on-chain amount (tx `8ibdXQtD…`, `Supplied.amount =
+   5_000_000_000`, 1:1 first deposit → `4_994_153_570` shares). (An earlier
+   draft of this list said "100 dUSDC"; corrected to the on-chain value.)
+2. Open a DN ladder against a current BTC oracle
+   (`ladder::open_hedge_ladder_aligned<DUSDC>`). Intended design = 5 legs;
+   the live demo opened **2 legs** (`per_leg_qty = 10_000_000` = $10 each,
+   $20 notional) — a testnet gas-budget choice, band identical.
+3. Wait for oracle settlement (the demo oracle ran a ~18h tenor).
 4. Trigger `r3::redeem_permissionless<DUSDC>` to realise the ITM
    payout from any wallet (testing the permissionless bypass).
 5. Read post-state metrics:
    - `vault::plp_value` (Coin<PLP> balance)
-   - `vault::dusdc_in_manager` (manager's dUSDC balance after R3)
-   - `vault::total_max_payout` (should be 0 after settlement)
+   - `vault::dusdc_in_manager` (Strata-side manager tracker)
+   - `vault::total_max_payout` (the wrapper redeem reduces this; settled
+     via the underlying entry it stays stale — see the table caveat)
    - `vault::share_price_micro` (post-realisation NAV per share)
 6. Compare to a sim run on a matching BTC path under the
    `s5_main.py` orchestrator.
@@ -121,7 +125,10 @@ Tables below record both honestly — no band-aid.
 | ladder ITM legs at settle | `≥1` | **1** (leg 1 ITM, settlement $70,038.56 < strike $70,271) | ✅ live |
 | settlement liquid-cash realized into manager | `> 0` | **`10_000_000` ($10)** — manager balance `2_007_307_600`, micro-exact | ✅ live |
 | realized via `r3.move` wrapper | wrapper tx | swept by third-party keeper via the UNDERLYING `predict::redeem_permissionless` first (pillar-2 permissionlessness, organic) — wrapper crank staged on a fresh cycle | ◐ honest |
-| `share_price_micro ≥ 0` invariant throughout | `true` | `true` (1_400_468 post-open) | ✅ |
+| `total_max_payout` post-settle | `0` (wrapper would zero it) | `20_000_000` — **stale**: keeper used the underlying entry, so the wrapper's `reduce_max_payout` mirror never ran | ◐ honest drift |
+| `share_price_micro` post-settle | NAV per share | `1_400_468` — unchanged: the $10 sits in the manager BalanceManager; the vault NAV mirror (`dusdc_in_manager` tracker) was not bumped by the underlying-entry sweep | ◐ honest drift |
+| `available_for_withdraw` post-settle | unfrozen | `6_974_153_570` ($6,974.15) — withdrawable; understated by ~$20 vs an unwound state because `total_max_payout` is stale | ✅ (caveat) |
+| `share_price_micro ≥ 0` invariant throughout | `true` | `true` (1_400_468) | ✅ |
 
 The supply leg confirms the S5R3.2 share-price floor invariant on-chain
 (first deposit mints 1:1 at `1_000_000` micro). After the v2 upgrade the
